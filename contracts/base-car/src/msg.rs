@@ -1,17 +1,20 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
+use cosmwasm_std::Addr;
 
 #[cw_serde]
-pub struct InstantiateMsg {}
+pub struct InstantiateMsg {
+    owner: String,
+}
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    Register {},
+    Register { car_addr: Addr },
 
     Play {},
 
     BuyShell {},
 
-    BuyAcceleration {},
+    BuyAccelerate {},
 
     BuyBanana {},
 
@@ -21,47 +24,65 @@ pub enum ExecuteMsg {
 }
 
 #[cw_serde]
-pub struct GetAllCarDataReponse {}
+pub struct AllCarDataReponse {}
 
 #[cw_serde]
-pub struct GetAllBananasResponse {}
+pub struct AllBananasResponse {}
 
 #[cw_serde]
-pub struct GetAccelerateCostResponse {}
+pub struct AccelerateCostResponse {
+    pub cost: u64,
+}
 
 #[cw_serde]
-pub struct GetShellCostResponse {}
+pub struct ShellCostResponse {
+    pub cost: u64,
+}
 
 #[cw_serde]
-pub struct GetSuperShellCostResponse {}
+pub struct SuperShellCostResponse {
+    pub cost: u64,
+}
 
 #[cw_serde]
-pub struct GetBananaCostResponse {}
+pub struct BananaCostResponse {
+    pub cost: u64,
+}
 
 #[cw_serde]
-pub struct GetShieldCostResponse {} 
+pub struct ShieldCostResponse {
+    pub cost: u64,
+}
+
+#[cw_serde]
+pub struct OwnerResponse {
+    pub owner: String,
+}
 
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
-    #[returns(GetAllCarDataReponse)]
+    #[returns(OwnerResponse)]
+    GetOwner {},
+
+    #[returns(AllCarDataReponse)]
     GetAllCarData {},
 
-    #[returns(GetAllBananasResponse)]
-    GetAllBananas{},
+    #[returns(AllBananasResponse)]
+    GetAllBananas {},
 
-    #[returns(GetAccelerateCostResponse)]
-    GetAccelerateCost{},
+    #[returns(AccelerateCostResponse)]
+    GetAccelerateCost {},
 
-    #[returns(GetShellCostResponse)]
-    GetShellCost{},
+    #[returns(ShellCostResponse)]
+    GetShellCost {},
 
-    #[returns(GetSuperShellCostResponse)]
-    GetSuperShellCost{},
+    #[returns(SuperShellCostResponse)]
+    GetSuperShellCost {},
 
-    #[returns(GetBananaCostResponse)]
-    GetBananaCost{},
+    #[returns(BananaCostResponse)]
+    GetBananaCost {},
 
-    #[returns(GetShieldCostResponse)]
+    #[returns(ShieldCostResponse)]
     GetShieldCost,
 }

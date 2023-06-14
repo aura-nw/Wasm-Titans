@@ -1,30 +1,79 @@
+use std::collections::HashMap;
+
 use cosmwasm_schema::cw_serde;
+use cosmwasm_std::Addr;
+use cw_storage_plus::Item;
 
-pub const PLAYERS_REQUIRED: u16 = 3;
-pub const POST_SHELL_SPEED: u64 = 1;
-pub const STARTING_BALANCE: u64 = 17500;
-pub const FINISH_DISTANCE: u64 = 1000;
-pub const BANANA_SPEED_MODIFIER: f64 = 0.5e18;
+pub const OWNER: Item<String> = Item::new("owner");
+pub const GAME_STATE: Item<GameState> = Item::new("game_state");
 
-pub const SHELL_TARGET_PRICE: f64 = 200e18;
-pub const SHELL_PER_TURN_DECREASE: f64 = 0.33e18;
-pub const SHELL_SELL_PER_TURN: f64 = 0.2e18;
+#[cw_serde]
+pub struct Config {
+    // Number players required in each round
+    pub num_players: u64,
 
-pub const ACCELERATE_TARGET_PRICE: f64 = 10e18;
-pub const ACCELERATE_PER_TURN_DECREASE: f64 = 0.33e18;
-pub const ACCELERATE_SELL_PER_TURN: f64 = 2e18;
+    pub post_sell_speed: u64,
 
-pub const SUPER_SHELL_TARGET_PRICE: f64 = 300e18;
-pub const SUPER_SHELL_PER_TURN_DECREASE: f64 = 0.35e18;
-pub const SUPER_SHELL_SELL_PER_TURN: f64 = 0.2e18;
+    // Initial balance for each car
+    pub init_balance: u64,
 
-pub const BANANA_TARGET_PRICE: f64 = 300e18;
-pub const BANANA_PER_TURN_DECREASE: f64 = 0.33e18;
-pub const BANANA_SELL_PER_TURN: f64 = 0.2e18;
+    // Target distance
+    pub target_distance: u64,
 
-pub const SHIELD_TAGET_PRICE: f64 = 150e18;
-pub const SHIELD_PER_TURN_DECREASE: f64 = 0.33e18;
-pub const SHIELD_SELL_PER_TURN: f64 = 0.2e18;
+    pub banana_speed_modifier: u64,
+
+    // Shell config
+    pub shell_target_price: u64,
+    pub shell_per_turn_decrease: u64,
+    pub shell_sell_per_turn: u64,
+
+    // Accelrate config
+    pub accel_target_price: u64,
+    pub accel_per_turn_decrease: u64,
+    pub accel_sell_per_turn: u64,
+
+    // Super shell config
+    pub ss_target_price: u64,
+    pub ss_per_turn_decrease: u64,
+    pub ss_sell_per_turn: u64,
+
+    // Banana config
+    pub banana_target_price: u64,
+    pub banana_per_turn_decrease: u64,
+    pub banana_sell_per_turn: u64,
+
+    // Shield config
+    pub shield_target_price: u64,
+    pub shield_per_turn_decrease: u64,
+    pub shield_sell_per_turn: u64,
+}
+
+impl Config {
+    pub fn default() -> Self {
+        Self {
+            num_players: 3,
+            post_sell_speed: 0,
+            init_balance: 0,
+            target_distance: 0,
+            banana_speed_modifier: 0,
+            shell_target_price: 0,
+            shell_per_turn_decrease: 0,
+            shell_sell_per_turn: 0,
+            accel_target_price: 0,
+            accel_per_turn_decrease: 0,
+            accel_sell_per_turn: 0,
+            ss_target_price: 0,
+            ss_per_turn_decrease: 0,
+            ss_sell_per_turn: 0,
+            banana_target_price: 0,
+            banana_per_turn_decrease: 0,
+            banana_sell_per_turn: 0,
+            shield_target_price: 0,
+            shield_per_turn_decrease: 0,
+            shield_sell_per_turn: 0,
+        }
+    }
+}
 
 #[cw_serde]
 pub enum State {
@@ -40,4 +89,58 @@ pub enum ActionType {
     SuperShell,
     Banana,
     Shield,
+}
+
+#[cw_serde]
+pub struct CarData {
+    pub balance: u64,
+    pub addr: Addr,
+    pub y: u64,
+    pub speed: u64,
+    pub shield: u64,
+}
+
+impl CarData {
+    fn at_start(addr: Addr) -> Self {
+        Self {
+            balance: 0,
+            addr: addr,
+            y: 0,
+            speed: 0,
+            shield: 0,
+        }
+    }
+}
+
+#[cw_serde]
+pub struct GameState {
+    pub all_cars: Vec<Addr>,
+    pub turns: u64,
+
+    pub map_addr_car: HashMap<Addr, CarData>,
+
+    pub state: State,
+    pub config: Config,
+}
+
+impl GameState {
+    pub fn default() -> Self {
+        Self {
+            all_cars: Vec::new(),
+            turns: 0,
+            map_addr_car: HashMap::new(),
+            state: State::Waiting,
+            config: Config::default(),
+        }
+    }
+
+    pub fn register(&mut self, car_addr: Addr) {
+        self.all_cars.push(car_addr.clone());
+        self.map_addr_car
+            .insert(car_addr.clone(), CarData::at_start(car_addr.clone()));
+    }
+
+    pub fn total_cars(&self) -> u64 {
+        self.all_cars.len() as u64
+    }
 }
