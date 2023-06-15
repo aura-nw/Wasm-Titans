@@ -57,7 +57,10 @@ pub mod execute {
     use cosmwasm_std::{Addr, DepsMut, Env, MessageInfo, Response};
 
     use crate::{
-        helpers::{get_accel_cost, get_bananas_sorted_by_y, get_shell_cost},
+        helpers::{
+            get_accel_cost, get_banana_cost, get_bananas_sorted_by_y, get_shell_cost,
+            get_shield_cost, get_super_shell_cost,
+        },
         state::{ActionType, CarData, GAME_STATE},
         ContractError,
     };
@@ -206,7 +209,32 @@ pub mod execute {
         env: Env,
         info: MessageInfo,
     ) -> Result<Response, ContractError> {
-        Ok(Response::new().add_attribute("action", "buy_banana"))
+        let mut state = GAME_STATE.load(deps.storage)?;
+
+        let cost = get_banana_cost(&state);
+
+        let mut sender_car = state.map_addr_car.get(&info.sender).unwrap().to_owned();
+
+        if state.bananas.len() > 0 && state.bananas[state.bananas.len() - 1] == sender_car.y {
+            return Ok(Response::new()
+                .add_attribute("cost", "0")
+                .add_attribute("turns", state.turns.clone().to_string())
+                .add_attribute("action", "buy_banana"));
+        }
+
+        sender_car.balance -= cost;
+
+        let y = sender_car.y;
+
+        state.bananas.push(y);
+        (*state.action_sold.get_mut(&ActionType::Banana).unwrap()) += 1;
+
+        Ok(Response::new()
+            .add_attribute("turns", state.turns.clone().to_string())
+            .add_attribute("sender_car", info.sender.to_string())
+            .add_attribute("cost", cost.to_string())
+            .add_attribute("y", y.to_string())
+            .add_attribute("action", "buy_banana"))
     }
 
     pub fn execute_buy_shield(
@@ -215,7 +243,26 @@ pub mod execute {
         info: MessageInfo,
         amount: u64,
     ) -> Result<Response, ContractError> {
-        Ok(Response::new().add_attribute("action", "buy_shield"))
+        if amount == 0 {
+            return Err(ContractError::ZeroAmount);
+        }
+
+        let mut state = GAME_STATE.load(deps.storage)?;
+        let mut sender_car = state.map_addr_car.get(&info.sender).unwrap().to_owned();
+        let cost = get_shield_cost(&state, amount);
+
+        sender_car.balance -= cost;
+
+        sender_car.shield += 1 + amount;
+
+        (*state.action_sold.get_mut(&ActionType::Shield).unwrap()) += amount;
+
+        Ok(Response::new()
+            .add_attribute("sender_car", info.sender.to_string())
+            .add_attribute("amount", amount.to_string())
+            .add_attribute("turns", state.turns.clone().to_string())
+            .add_attribute("cost", cost.to_string())
+            .add_attribute("action", "buy_shield"))
     }
 
     pub fn execute_buy_super_shell(
@@ -224,7 +271,39 @@ pub mod execute {
         info: MessageInfo,
         amount: u64,
     ) -> Result<Response, ContractError> {
-        Ok(Response::new().add_attribute("action", "buy_super_shell"))
+        if amount == 0 {
+            return Err(ContractError::ZeroAmount);
+        }
+
+        let mut state = GAME_STATE.load(deps.storage)?;
+        let mut sender_car =  state.map_addr_car.get(&info.sender).unwrap().to_owned();
+        let cost = get_super_shell_cost(&state, amount);
+
+        sender_car.balance -= cost;
+        
+        let y = sender_car.y;
+
+        (*state.action_sold.get_mut(&ActionType::SuperShell).unwrap()) += amount;
+
+        let all_cars = state.all_cars;
+        for i in 0..state.config.num_players {
+            let next_car = state.map_addr_car.get(&all_cars[i]).unwrap().to_owned();
+            if next_car.y <= y {
+                continue;
+            }
+
+            if next_car.speed > state.config.post_sell_speed {
+                state.map_addr_car.get_mut(&next_car.addr).unwrap().speed = state.config.post_sell_speed;
+                return Ok(Response::new()
+                    .add_attribute("cost", cost.to_string())
+                    .add_attribute("turns", state.turns.clone().to_string())
+                    .add_attribute("action", "shelled"))
+            }
+        }
+
+        Ok(Response::new()
+            .add_attribute("turns", state.turns.clone().to_string())
+            .add_attribute("action", "buy_super_shell"))
     }
 }
 
