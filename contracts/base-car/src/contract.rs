@@ -5,7 +5,7 @@ use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult}
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{OWNER, GAME_STATE, GameState};
+use crate::state::{GameState, GAME_STATE, OWNER};
 
 /*
 // version info for migration info
@@ -41,18 +41,26 @@ pub fn execute(
     match msg {
         ExecuteMsg::Register { car_addr } => execute::execute_register(deps, env, info, car_addr),
         ExecuteMsg::Play {} => todo!(),
-        ExecuteMsg::BuyShell {} => todo!(),
-        ExecuteMsg::BuyAccelerate {} => todo!(),
+        ExecuteMsg::BuyShell { amount } => execute::execute_buy_shell(deps, env, info, amount),
+        ExecuteMsg::BuyAccelerate { amount } => {
+            execute::execute_buy_accelerate(deps, env, info, amount)
+        }
         ExecuteMsg::BuyBanana {} => todo!(),
-        ExecuteMsg::BuyShield {} => todo!(),
-        ExecuteMsg::BuySuperShell {} => todo!(),
+        ExecuteMsg::BuyShield { amount } => execute::execute_buy_shield(deps, env, info, amount),
+        ExecuteMsg::BuySuperShell { amount } => {
+            execute::execute_buy_super_shell(deps, env, info, amount)
+        }
     }
 }
 
 pub mod execute {
     use cosmwasm_std::{Addr, DepsMut, Env, MessageInfo, Response};
 
-    use crate::{ContractError, state::GAME_STATE};
+    use crate::{
+        helpers::{get_accel_cost, get_bananas_sorted_by_y, get_shell_cost},
+        state::{ActionType, CarData, GAME_STATE},
+        ContractError,
+    };
 
     pub fn execute_register(
         deps: DepsMut,
@@ -63,9 +71,9 @@ pub mod execute {
         let mut game_state = GAME_STATE.load(deps.storage)?;
 
         if game_state.total_cars() == game_state.config.num_players {
-            return Err(ContractError::LimitPlayers{});
+            return Err(ContractError::LimitPlayers {});
         }
-        
+
         game_state.register(car_addr.clone());
 
         GAME_STATE.save(deps.storage, &game_state)?;
@@ -87,7 +95,84 @@ pub mod execute {
         deps: DepsMut,
         env: Env,
         info: MessageInfo,
+        amount: u64,
     ) -> Result<Response, ContractError> {
+        if amount == 0 {
+            return Err(ContractError::ZeroAmount);
+        }
+
+        let mut state = GAME_STATE.load(deps.storage)?;
+        let sender = info.sender;
+
+        let cost = get_shell_cost(&state, amount);
+
+        let mut car_data = state.map_addr_car.get(&sender).unwrap().to_owned();
+        car_data.balance -= cost;
+
+        let y = car_data.y;
+
+        (*state.action_sold.get_mut(&ActionType::Shell).unwrap()) += amount;
+
+        let all_cars = state.all_cars.clone();
+
+        let mut closest_car = CarData::empty();
+        let mut dis_from_closest_car = u64::MAX;
+
+        for i in 0..state.config.num_players {
+            let next_car = state
+                .map_addr_car
+                .get(&all_cars[i as usize])
+                .unwrap()
+                .to_owned();
+
+            if next_car.y <= y {
+                continue;
+            }
+
+            let dis_from_next_car = next_car.y - y;
+
+            if dis_from_next_car < dis_from_closest_car {
+                closest_car = next_car;
+                dis_from_closest_car = dis_from_next_car
+            }
+        }
+
+        let len_bananas = state.bananas.len();
+        for i in 0..len_bananas {
+            if state.bananas[i] <= y {
+                continue;
+            }
+
+            if dis_from_closest_car != u64::MAX && state.bananas[i] > y + dis_from_closest_car {
+                break;
+            }
+
+            state.bananas[i] = state.bananas[len_bananas - 1];
+            state.bananas.pop();
+
+            let sorted_bananas = get_bananas_sorted_by_y(&state);
+            state.bananas = sorted_bananas;
+            closest_car = CarData::empty();
+            break;
+        }
+
+        if closest_car.addr.clone().into_string() != "" {
+            if state.map_addr_car.get(&closest_car.addr).unwrap().shield == 0
+                && state.map_addr_car.get(&closest_car.addr).unwrap().speed
+                    > state.config.post_sell_speed
+            {
+                state.map_addr_car.get_mut(&closest_car.addr).unwrap().speed =
+                    state.config.post_sell_speed;
+
+                return Ok(Response::new()
+                    .add_attribute("turns", state.turns.clone().to_string())
+                    .add_attribute("smoker", "")
+                    .add_attribute("smoked", "")
+                    .add_attribute("amount", amount.to_string())
+                    .add_attribute("action", "shelled"));
+            }
+        }
+
         Ok(Response::new().add_attribute("action", "buy_shell"))
     }
 
@@ -95,8 +180,25 @@ pub mod execute {
         deps: DepsMut,
         env: Env,
         info: MessageInfo,
+        amount: u64,
     ) -> Result<Response, ContractError> {
-        Ok(Response::new().add_attribute("action", "buy_accelerate"))
+        let mut state = GAME_STATE.load(deps.storage)?;
+
+        let cost = get_accel_cost(&state, amount);
+
+        let sender = info.sender;
+        let mut sender_car = state.map_addr_car.get(&sender).unwrap().to_owned();
+        sender_car.balance -= cost;
+
+        sender_car.speed += amount;
+
+        (*state.action_sold.get_mut(&ActionType::Accelerate).unwrap()) += amount;
+
+        Ok(Response::new()
+            .add_attribute("turns", state.turns.clone().to_string())
+            .add_attribute("amount", amount.to_string())
+            .add_attribute("cost", cost.to_string())
+            .add_attribute("action", "buy_accelerate"))
     }
 
     pub fn execute_buy_banana(
@@ -111,6 +213,7 @@ pub mod execute {
         deps: DepsMut,
         env: Env,
         info: MessageInfo,
+        amount: u64,
     ) -> Result<Response, ContractError> {
         Ok(Response::new().add_attribute("action", "buy_shield"))
     }
@@ -119,6 +222,7 @@ pub mod execute {
         deps: DepsMut,
         env: Env,
         info: MessageInfo,
+        amount: u64,
     ) -> Result<Response, ContractError> {
         Ok(Response::new().add_attribute("action", "buy_super_shell"))
     }

@@ -12,15 +12,23 @@ pub enum ExecuteMsg {
 
     Play {},
 
-    BuyShell {},
+    BuyShell {
+        amount: u64
+    },
 
-    BuyAccelerate {},
+    BuyAccelerate {
+        amount: u64
+    },
 
     BuyBanana {},
 
-    BuyShield {},
+    BuyShield {
+        amount: u64
+    },
 
-    BuySuperShell {},
+    BuySuperShell {
+        amount: u64
+    },
 }
 
 #[cw_serde]

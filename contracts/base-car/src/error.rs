@@ -11,4 +11,7 @@ pub enum ContractError {
 
     #[error("Limit players required")]
     LimitPlayers {},
+
+    #[error("Zero amount")]
+    ZeroAmount,
 }

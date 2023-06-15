@@ -83,6 +83,7 @@ pub enum State {
 }
 
 #[cw_serde]
+#[derive(Eq, Hash)]
 pub enum ActionType {
     Accelerate,
     Shell,
@@ -101,7 +102,7 @@ pub struct CarData {
 }
 
 impl CarData {
-    fn at_start(addr: Addr) -> Self {
+    pub fn at_start(addr: Addr) -> Self {
         Self {
             balance: 0,
             addr: addr,
@@ -109,6 +110,10 @@ impl CarData {
             speed: 0,
             shield: 0,
         }
+    }
+
+    pub fn empty() -> Self {
+        Self { balance: 0, addr: Addr::unchecked(""), y: 0, speed: 0, shield: 0 }
     }
 }
 
@@ -119,8 +124,15 @@ pub struct GameState {
 
     pub map_addr_car: HashMap<Addr, CarData>,
 
+    // The current state of the game: pre-start, started, done.
     pub state: State,
+
+    // Game config
     pub config: Config,
+    pub action_sold: HashMap<ActionType, u64>,
+
+    // The banana in play, tracked by their y position.
+    pub bananas: Vec<u64>,
 }
 
 impl GameState {
@@ -131,6 +143,8 @@ impl GameState {
             map_addr_car: HashMap::new(),
             state: State::Waiting,
             config: Config::default(),
+            action_sold: HashMap::new(),
+            bananas: Vec::new(),
         }
     }
 
