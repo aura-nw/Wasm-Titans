@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, vec};
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Addr;
@@ -113,7 +113,13 @@ impl CarData {
     }
 
     pub fn empty() -> Self {
-        Self { balance: 0, addr: Addr::unchecked(""), y: 0, speed: 0, shield: 0 }
+        Self {
+            balance: 0,
+            addr: Addr::unchecked(""),
+            y: 0,
+            speed: 0,
+            shield: 0,
+        }
     }
 }
 
@@ -146,6 +152,57 @@ impl GameState {
             action_sold: HashMap::new(),
             bananas: Vec::new(),
         }
+    }
+
+    pub fn for_test() -> Self {
+        let addr1 = Addr::unchecked("addr1");
+        let addr2 = Addr::unchecked("addr2");
+        let addr3 = Addr::unchecked("addr3");
+
+        let car_data1 = CarData{
+            balance: 1000,
+            addr: addr1.clone(),
+            y: 278,
+            speed: 5,
+            shield: 1,
+        };
+
+        let car_data2 = CarData {
+            balance: 1331,
+            addr: addr2.clone(),
+            y: 312,
+            speed: 3,
+            shield: 1,
+        };
+
+        let car_data3 = CarData {
+            balance: 1112,
+            addr: addr3.clone(),
+            y: 365,
+            speed: 3,
+            shield: 0,
+        };
+
+        let all_cars = vec![addr1.clone(), addr2.clone(), addr3.clone()];
+        let mut map_addr_car = HashMap::new();
+
+        map_addr_car.insert(addr1, car_data1);
+        map_addr_car.insert(addr2, car_data2);
+        map_addr_car.insert(addr3, car_data3);
+
+        Self {
+            all_cars,
+            turns: 3,
+            map_addr_car,
+            state: State::Active,
+            config: Config::default(),
+            action_sold: HashMap::new(),
+            bananas: Vec::new(),
+        }
+    }
+
+    pub fn all_car_data(&self) -> Vec<CarData> {
+        self.map_addr_car.values().cloned().collect()
     }
 
     pub fn register(&mut self, car_addr: Addr) {

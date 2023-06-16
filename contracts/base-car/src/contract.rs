@@ -40,7 +40,7 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::Register { car_addr } => execute::execute_register(deps, env, info, car_addr),
-        ExecuteMsg::Play {} => todo!(),
+        ExecuteMsg::Play { turns_to_play } => execute::execute_play(deps, env, info, turns_to_play),
         ExecuteMsg::BuyShell { amount } => execute::execute_buy_shell(deps, env, info, amount),
         ExecuteMsg::BuyAccelerate { amount } => {
             execute::execute_buy_accelerate(deps, env, info, amount)
@@ -59,7 +59,7 @@ pub mod execute {
     use crate::{
         helpers::{
             get_accel_cost, get_banana_cost, get_bananas_sorted_by_y, get_shell_cost,
-            get_shield_cost, get_super_shell_cost,
+            get_shield_cost, get_super_shell_cost, get_all_car_data_and_find_car,
         },
         state::{ActionType, CarData, GAME_STATE},
         ContractError,
@@ -90,7 +90,55 @@ pub mod execute {
         deps: DepsMut,
         env: Env,
         info: MessageInfo,
+        turns_to_play: u64,
     ) -> Result<Response, ContractError> {
+        let mut i = turns_to_play;
+
+        loop {
+            if i == 0 {
+                break;
+            }
+
+            let state = GAME_STATE.load(deps.storage)?;
+            let all_cars = state.all_cars.clone();
+            let current_turn = state.turns;
+
+            let current_turn_car = all_cars[(current_turn % state.config.num_players) as usize].clone();
+
+            let (all_car_data, your_car_index) = get_all_car_data_and_find_car(&state, current_turn_car);
+
+            // TODO: Pack msg and send to car contract for running their turn
+            // add_message || add_submessage
+
+
+            let bananas = get_bananas_sorted_by_y(&state);
+
+            for i in 0..state.config.num_players {
+                let car_addr = all_cars[i as usize].clone();
+                let mut car_data = state.map_addr_car.get(&car_addr).unwrap().to_owned();
+                if car_data.shield > 0 {
+                    car_data.shield -= 1;
+                }
+
+                let len = bananas.len();
+                let car_position = car_data.y;
+                let mut car_target_position = car_position + car_data.speed;
+
+                for banana_idx in 0..len {
+                    let banana_pos = bananas[banana_idx];
+
+                    if car_position >= banana_pos {
+                        // Stop at the banana
+                        car_target_position = banana_pos
+
+                    }
+                }
+
+            }
+
+            i -= 1;
+        }
+
         Ok(Response::new().add_attribute("action", "play"))
     }
 
@@ -276,28 +324,33 @@ pub mod execute {
         }
 
         let mut state = GAME_STATE.load(deps.storage)?;
-        let mut sender_car =  state.map_addr_car.get(&info.sender).unwrap().to_owned();
+        let mut sender_car = state.map_addr_car.get(&info.sender).unwrap().to_owned();
         let cost = get_super_shell_cost(&state, amount);
 
         sender_car.balance -= cost;
-        
+
         let y = sender_car.y;
 
         (*state.action_sold.get_mut(&ActionType::SuperShell).unwrap()) += amount;
 
-        let all_cars = state.all_cars;
+        let all_cars = state.all_cars.clone();
         for i in 0..state.config.num_players {
-            let next_car = state.map_addr_car.get(&all_cars[i]).unwrap().to_owned();
+            let next_car = state
+                .map_addr_car
+                .get(&all_cars[i as usize])
+                .unwrap()
+                .to_owned();
             if next_car.y <= y {
                 continue;
             }
 
             if next_car.speed > state.config.post_sell_speed {
-                state.map_addr_car.get_mut(&next_car.addr).unwrap().speed = state.config.post_sell_speed;
+                state.map_addr_car.get_mut(&next_car.addr).unwrap().speed =
+                    state.config.post_sell_speed;
                 return Ok(Response::new()
                     .add_attribute("cost", cost.to_string())
                     .add_attribute("turns", state.turns.clone().to_string())
-                    .add_attribute("action", "shelled"))
+                    .add_attribute("action", "shelled"));
             }
         }
 

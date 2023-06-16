@@ -10,7 +10,9 @@ pub struct InstantiateMsg {
 pub enum ExecuteMsg {
     Register { car_addr: Addr },
 
-    Play {},
+    Play {
+        turns_to_play: u64,
+    },
 
     BuyShell {
         amount: u64
