@@ -214,4 +214,8 @@ impl GameState {
     pub fn total_cars(&self) -> u64 {
         self.all_cars.len() as u64
     }
+
+    pub fn can_play(&self) -> bool {
+        return self.all_cars.len() as u64 == self.config.num_players
+    }
 }

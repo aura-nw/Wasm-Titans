@@ -111,6 +111,11 @@ pub mod execute {
             }
 
             let state = GAME_STATE.load(deps.storage)?;
+            
+            if !state.can_play() {
+                return Err(ContractError::NotEnoughPlayers);
+            }
+
             let all_cars = state.all_cars.clone();
             let current_turn = state.turns;
 
