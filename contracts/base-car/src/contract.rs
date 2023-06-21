@@ -50,6 +50,7 @@ pub fn execute(
         ExecuteMsg::BuySuperShell { amount } => {
             execute::execute_buy_super_shell(deps, env, info, amount)
         }
+        ExecuteMsg::Reset {} => todo!(),
     }
 }
 
@@ -58,12 +59,22 @@ pub mod execute {
 
     use crate::{
         helpers::{
-            get_accel_cost, get_banana_cost, get_bananas_sorted_by_y, get_shell_cost,
-            get_shield_cost, get_super_shell_cost, get_all_car_data_and_find_car,
+            get_accel_cost, get_all_car_data_and_find_car, get_banana_cost,
+            get_bananas_sorted_by_y, get_shell_cost, get_shield_cost, get_super_shell_cost,
         },
-        state::{ActionType, CarData, GAME_STATE},
+        state::{ActionType, CarData, GameState, GAME_STATE},
         ContractError,
     };
+
+    pub fn execute_reset(
+        deps: DepsMut,
+        env: Env,
+        info: MessageInfo,
+    ) -> Result<Response, ContractError> {
+        let game_state = GameState::default();
+        GAME_STATE.save(deps.storage, &game_state)?;
+        Ok(Response::new().add_attribute("action", "execute_reset"))
+    }
 
     pub fn execute_register(
         deps: DepsMut,
@@ -103,13 +114,14 @@ pub mod execute {
             let all_cars = state.all_cars.clone();
             let current_turn = state.turns;
 
-            let current_turn_car = all_cars[(current_turn % state.config.num_players) as usize].clone();
+            let current_turn_car =
+                all_cars[(current_turn % state.config.num_players) as usize].clone();
 
-            let (all_car_data, your_car_index) = get_all_car_data_and_find_car(&state, current_turn_car);
+            let (all_car_data, your_car_index) =
+                get_all_car_data_and_find_car(&state, current_turn_car);
 
             // TODO: Pack msg and send to car contract for running their turn
             // add_message || add_submessage
-
 
             let bananas = get_bananas_sorted_by_y(&state);
 
@@ -130,10 +142,8 @@ pub mod execute {
                     if car_position >= banana_pos {
                         // Stop at the banana
                         car_target_position = banana_pos
-
                     }
                 }
-
             }
 
             i -= 1;
@@ -375,4 +385,63 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use cosmwasm_std::{
+        testing::{mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage},
+        Empty, OwnedDeps,
+    };
+
+    use crate::{contract::instantiate, msg::InstantiateMsg};
+
+    #[test]
+    fn test_instantiate_work() {
+        let mut deps = mock_dependencies();
+
+        let owner_str = "owner";
+
+        let msg = InstantiateMsg {
+            owner: owner_str.to_owned(),
+        };
+
+        let info = mock_info("sender", &[]);
+        let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+        println!("len attributes = {:?}", res.attributes.len());
+        assert!(res.attributes.len() != 0);
+    }
+
+    fn instantiate_deps() -> OwnedDeps<MockStorage, MockApi, MockQuerier, Empty> {
+        let mut deps = mock_dependencies();
+        let msg = InstantiateMsg {
+            owner: "owner".to_owned(),
+        };
+
+        let info = mock_info("sender", &[]);
+        instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        deps
+    }
+
+    #[test]
+    fn test_reset() {}
+
+    #[test]
+    fn test_register() {}
+
+    #[test]
+    fn test_buy_accel() {}
+
+    #[test]
+    fn test_buy_shell() {}
+
+    #[test]
+    fn test_buy_ss() {}
+
+    #[test]
+    fn test_buy_shield() {}
+
+    #[test]
+    fn test_buy_banana() {}
+
+    #[test]
+    fn test_play() {}
+}

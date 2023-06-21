@@ -3,34 +3,26 @@ use cosmwasm_std::Addr;
 
 #[cw_serde]
 pub struct InstantiateMsg {
-    owner: String,
+    pub owner: String,
 }
 
 #[cw_serde]
 pub enum ExecuteMsg {
     Register { car_addr: Addr },
 
-    Play {
-        turns_to_play: u64,
-    },
+    Reset {},
 
-    BuyShell {
-        amount: u64
-    },
+    Play { turns_to_play: u64 },
 
-    BuyAccelerate {
-        amount: u64
-    },
+    BuyShell { amount: u64 },
+
+    BuyAccelerate { amount: u64 },
 
     BuyBanana {},
 
-    BuyShield {
-        amount: u64
-    },
+    BuyShield { amount: u64 },
 
-    BuySuperShell {
-        amount: u64
-    },
+    BuySuperShell { amount: u64 },
 }
 
 #[cw_serde]
