@@ -62,7 +62,7 @@ pub mod execute {
             get_accel_cost, get_all_car_data_and_find_car, get_banana_cost,
             get_bananas_sorted_by_y, get_shell_cost, get_shield_cost, get_super_shell_cost,
         },
-        state::{ActionType, CarData, GameState, GAME_STATE},
+        state::{ActionType, CarData, GameState, GAME_STATE, OWNER},
         ContractError,
     };
 
@@ -71,6 +71,12 @@ pub mod execute {
         env: Env,
         info: MessageInfo,
     ) -> Result<Response, ContractError> {
+        let owner = OWNER.load(deps.storage)?;
+
+        if info.sender.to_string() != owner {
+            return Err(ContractError::Unauthorized {});
+        }
+
         let game_state = GameState::default();
         GAME_STATE.save(deps.storage, &game_state)?;
         Ok(Response::new().add_attribute("action", "execute_reset"))
@@ -111,7 +117,7 @@ pub mod execute {
             }
 
             let state = GAME_STATE.load(deps.storage)?;
-            
+
             if !state.can_play() {
                 return Err(ContractError::NotEnoughPlayers);
             }
