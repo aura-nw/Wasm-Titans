@@ -8,7 +8,7 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    Register { car_addr: Addr },
+    Register { car_addrs: Vec<Addr> },
 
     Reset {},
 

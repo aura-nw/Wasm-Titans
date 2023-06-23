@@ -1,17 +1,10 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
-// use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{GameState, GAME_STATE, OWNER};
-
-/*
-// version info for migration info
-const CONTRACT_NAME: &str = "crates.io:base-car";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-*/
+use crate::state::{ActionType, GameState, ACTION_SOLD, GAME_STATE, OWNER};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -22,6 +15,12 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     let owner = info.sender.clone();
     OWNER.save(deps.storage, &owner.to_string())?;
+
+    ACTION_SOLD.save(deps.storage, &ActionType::Accelerate.to_string(), &0)?;
+    ACTION_SOLD.save(deps.storage, &ActionType::Shell.to_string(), &0)?;
+    ACTION_SOLD.save(deps.storage, &ActionType::SuperShell.to_string(), &0)?;
+    ACTION_SOLD.save(deps.storage, &ActionType::Banana.to_string(), &0)?;
+    ACTION_SOLD.save(deps.storage, &ActionType::Shield.to_string(), &0)?;
 
     let game_state = GameState::default();
     GAME_STATE.save(deps.storage, &game_state)?;
@@ -39,18 +38,18 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Register { car_addr } => execute::execute_register(deps, env, info, car_addr),
-        ExecuteMsg::Play { turns_to_play } => execute::execute_play(deps, env, info, turns_to_play),
+        ExecuteMsg::Register { car_addrs } => execute::execute_register(deps, env, info, car_addrs),
+        ExecuteMsg::Play { turns_to_play } => todo!(),
         ExecuteMsg::BuyShell { amount } => execute::execute_buy_shell(deps, env, info, amount),
         ExecuteMsg::BuyAccelerate { amount } => {
             execute::execute_buy_accelerate(deps, env, info, amount)
         }
-        ExecuteMsg::BuyBanana {} => todo!(),
+        ExecuteMsg::BuyBanana {} => execute::execute_buy_banana(deps, env, info),
         ExecuteMsg::BuyShield { amount } => execute::execute_buy_shield(deps, env, info, amount),
         ExecuteMsg::BuySuperShell { amount } => {
             execute::execute_buy_super_shell(deps, env, info, amount)
         }
-        ExecuteMsg::Reset {} => todo!(),
+        ExecuteMsg::Reset {} => execute::execute_reset(deps, env, info),
     }
 }
 
@@ -59,10 +58,10 @@ pub mod execute {
 
     use crate::{
         helpers::{
-            get_accel_cost, get_all_car_data_and_find_car, get_banana_cost,
-            get_bananas_sorted_by_y, get_shell_cost, get_shield_cost, get_super_shell_cost,
+            get_accel_cost, get_banana_cost, get_bananas_sorted_by_y, get_shell_cost,
+            get_shield_cost, get_super_shell_cost,
         },
-        state::{ActionType, CarData, GameState, GAME_STATE, OWNER},
+        state::{ActionType, CarData, GameState, ACTION_SOLD, ALL_CAR_DATA, GAME_STATE, OWNER},
         ContractError,
     };
 
@@ -86,82 +85,109 @@ pub mod execute {
         deps: DepsMut,
         env: Env,
         info: MessageInfo,
-        car_addr: Addr,
+        car_addrs: Vec<Addr>,
     ) -> Result<Response, ContractError> {
+        let owner = OWNER.load(deps.storage)?;
+
+        if info.sender.to_string() != owner {
+            return Err(ContractError::Unauthorized {});
+        }
+
         let mut game_state = GAME_STATE.load(deps.storage)?;
 
         if game_state.total_cars() == game_state.config.num_players {
             return Err(ContractError::LimitPlayers {});
         }
 
-        game_state.register(car_addr.clone());
+        game_state.register(car_addrs.clone());
 
         GAME_STATE.save(deps.storage, &game_state)?;
 
+        for car_addr in car_addrs.clone() {
+            ALL_CAR_DATA.save(
+                deps.storage,
+                car_addr.clone(),
+                &CarData::at_start(car_addr.clone()),
+            )?;
+        }
+
         Ok(Response::new()
-            .add_attribute("car_address", car_addr.clone().to_string())
+            .add_attribute(
+                "cars",
+                car_addrs
+                    .into_iter()
+                    .map(|c| c.to_string())
+                    .collect::<Vec<String>>()
+                    .join("|"),
+            )
             .add_attribute("action", "register"))
     }
 
-    pub fn execute_play(
-        deps: DepsMut,
-        env: Env,
-        info: MessageInfo,
-        turns_to_play: u64,
-    ) -> Result<Response, ContractError> {
-        let mut i = turns_to_play;
+    // pub fn execute_play(
+    //     deps: DepsMut,
+    //     env: Env,
+    //     info: MessageInfo,
+    //     turns_to_play: u64,
+    // ) -> Result<Response, ContractError> {
+    //     let owner = OWNER.load(deps.storage)?;
 
-        loop {
-            if i == 0 {
-                break;
-            }
+    //     if info.sender.to_string() != owner {
+    //         return Err(ContractError::Unauthorized {});
+    //     }
 
-            let state = GAME_STATE.load(deps.storage)?;
+    //     let mut i = turns_to_play;
 
-            if !state.can_play() {
-                return Err(ContractError::NotEnoughPlayers);
-            }
+    //     loop {
+    //         if i == 0 {
+    //             break;
+    //         }
 
-            let all_cars = state.all_cars.clone();
-            let current_turn = state.turns;
+    //         let state = GAME_STATE.load(deps.storage)?;
 
-            let current_turn_car =
-                all_cars[(current_turn % state.config.num_players) as usize].clone();
+    //         if !state.can_play() {
+    //             return Err(ContractError::NotEnoughPlayers);
+    //         }
 
-            let (all_car_data, your_car_index) =
-                get_all_car_data_and_find_car(&state, current_turn_car);
+    //         let all_cars = state.all_cars.clone();
+    //         let current_turn = state.turns;
 
-            // TODO: Pack msg and send to car contract for running their turn
-            // add_message || add_submessage
+    //         let current_turn_car =
+    //             all_cars[(current_turn % state.config.num_players) as usize].clone();
 
-            let bananas = get_bananas_sorted_by_y(&state);
+    //         let (all_car_data, your_car_index) =
+    //             get_all_car_data_and_find_car(&state, current_turn_car);
 
-            for i in 0..state.config.num_players {
-                let car_addr = all_cars[i as usize].clone();
-                let mut car_data = state.map_addr_car.get(&car_addr).unwrap().to_owned();
-                if car_data.shield > 0 {
-                    car_data.shield -= 1;
-                }
+    //         // TODO: Pack msg and send to car contract for running their turn
+    //         // add_message || add_submessage
 
-                let len = bananas.len();
-                let car_position = car_data.y;
-                let mut car_target_position = car_position + car_data.speed;
+    //         let bananas = get_bananas_sorted_by_y(&state);
 
-                for banana_idx in 0..len {
-                    let banana_pos = bananas[banana_idx];
+    //         for i in 0..state.config.num_players {
+    //             let car_addr = all_cars[i as usize].clone();
+    //             let mut car_data = state.map_addr_car.get(&car_addr).unwrap().to_owned();
+    //             if car_data.shield > 0 {
+    //                 car_data.shield -= 1;
+    //             }
 
-                    if car_position >= banana_pos {
-                        // Stop at the banana
-                        car_target_position = banana_pos
-                    }
-                }
-            }
+    //             let len = bananas.len();
+    //             let car_position = car_data.y;
+    //             let mut car_target_position = car_position + car_data.speed;
 
-            i -= 1;
-        }
+    //             for banana_idx in 0..len {
+    //                 let banana_pos = bananas[banana_idx];
 
-        Ok(Response::new().add_attribute("action", "play"))
-    }
+    //                 if car_position >= banana_pos {
+    //                     // Stop at the banana
+    //                     car_target_position = banana_pos
+    //                 }
+    //             }
+    //         }
+
+    //         i -= 1;
+    //     }
+
+    //     Ok(Response::new().add_attribute("action", "play"))
+    // }
 
     pub fn execute_buy_shell(
         deps: DepsMut,
@@ -176,14 +202,17 @@ pub mod execute {
         let mut state = GAME_STATE.load(deps.storage)?;
         let sender = info.sender;
 
-        let cost = get_shell_cost(&state, amount);
+        let sold = ACTION_SOLD.load(deps.storage, &ActionType::Shell.to_string())?;
+        let cost = get_shell_cost(&state, amount, sold.clone());
 
-        let mut car_data = state.map_addr_car.get(&sender).unwrap().to_owned();
+        let sold_updated = sold + cost;
+
+        ACTION_SOLD.save(deps.storage, &ActionType::Shell.to_string(), &sold_updated)?;
+
+        let mut car_data = ALL_CAR_DATA.load(deps.storage, sender)?;
         car_data.balance -= cost;
 
         let y = car_data.y;
-
-        (*state.action_sold.get_mut(&ActionType::Shell).unwrap()) += amount;
 
         let all_cars = state.all_cars.clone();
 
@@ -191,11 +220,7 @@ pub mod execute {
         let mut dis_from_closest_car = u64::MAX;
 
         for i in 0..state.config.num_players {
-            let next_car = state
-                .map_addr_car
-                .get(&all_cars[i as usize])
-                .unwrap()
-                .to_owned();
+            let next_car = ALL_CAR_DATA.load(deps.storage, all_cars[i as usize].clone())?;
 
             if next_car.y <= y {
                 continue;
@@ -229,13 +254,8 @@ pub mod execute {
         }
 
         if closest_car.addr.clone().into_string() != "" {
-            if state.map_addr_car.get(&closest_car.addr).unwrap().shield == 0
-                && state.map_addr_car.get(&closest_car.addr).unwrap().speed
-                    > state.config.post_sell_speed
-            {
-                state.map_addr_car.get_mut(&closest_car.addr).unwrap().speed =
-                    state.config.post_sell_speed;
-
+            if closest_car.shield == 0 && closest_car.speed > state.config.post_sell_speed {
+                closest_car.speed = state.config.post_sell_speed;
                 return Ok(Response::new()
                     .add_attribute("turns", state.turns.clone().to_string())
                     .add_attribute("smoker", "")
@@ -256,15 +276,18 @@ pub mod execute {
     ) -> Result<Response, ContractError> {
         let mut state = GAME_STATE.load(deps.storage)?;
 
-        let cost = get_accel_cost(&state, amount);
+        let sold = ACTION_SOLD.load(deps.storage, &ActionType::Accelerate.to_string())?;
+        let cost = get_accel_cost(&state, amount, sold.clone());
 
+        let sold_updated = sold + cost;
+
+        ACTION_SOLD.save(deps.storage, &ActionType::Shell.to_string(), &sold_updated)?;
         let sender = info.sender;
-        let mut sender_car = state.map_addr_car.get(&sender).unwrap().to_owned();
+
+        let mut sender_car = ALL_CAR_DATA.load(deps.storage, sender)?;
+
         sender_car.balance -= cost;
-
         sender_car.speed += amount;
-
-        (*state.action_sold.get_mut(&ActionType::Accelerate).unwrap()) += amount;
 
         Ok(Response::new()
             .add_attribute("turns", state.turns.clone().to_string())
@@ -280,9 +303,14 @@ pub mod execute {
     ) -> Result<Response, ContractError> {
         let mut state = GAME_STATE.load(deps.storage)?;
 
-        let cost = get_banana_cost(&state);
+        let sold = ACTION_SOLD.load(deps.storage, &ActionType::Banana.to_string())?;
+        let cost = get_banana_cost(&state, sold.clone());
 
-        let mut sender_car = state.map_addr_car.get(&info.sender).unwrap().to_owned();
+        let sold_updated = sold + cost;
+
+        ACTION_SOLD.save(deps.storage, &ActionType::Banana.to_string(), &sold_updated)?;
+
+        let mut sender_car = ALL_CAR_DATA.load(deps.storage, info.sender.clone())?;
 
         if state.bananas.len() > 0 && state.bananas[state.bananas.len() - 1] == sender_car.y {
             return Ok(Response::new()
@@ -296,11 +324,10 @@ pub mod execute {
         let y = sender_car.y;
 
         state.bananas.push(y);
-        (*state.action_sold.get_mut(&ActionType::Banana).unwrap()) += 1;
 
         Ok(Response::new()
             .add_attribute("turns", state.turns.clone().to_string())
-            .add_attribute("sender_car", info.sender.to_string())
+            .add_attribute("sender_car", info.sender.clone().to_string())
             .add_attribute("cost", cost.to_string())
             .add_attribute("y", y.to_string())
             .add_attribute("action", "buy_banana"))
@@ -317,17 +344,19 @@ pub mod execute {
         }
 
         let mut state = GAME_STATE.load(deps.storage)?;
-        let mut sender_car = state.map_addr_car.get(&info.sender).unwrap().to_owned();
-        let cost = get_shield_cost(&state, amount);
+        let mut sender_car = ALL_CAR_DATA.load(deps.storage, info.sender.clone())?;
+        let sold = ACTION_SOLD.load(deps.storage, &ActionType::Shield.to_string())?;
+        let cost = get_shield_cost(&state, amount, sold.clone());
 
+        let sold_updated = sold + cost;
+
+        ACTION_SOLD.save(deps.storage, &ActionType::Shield.to_string(), &sold_updated)?;
         sender_car.balance -= cost;
 
         sender_car.shield += 1 + amount;
 
-        (*state.action_sold.get_mut(&ActionType::Shield).unwrap()) += amount;
-
         Ok(Response::new()
-            .add_attribute("sender_car", info.sender.to_string())
+            .add_attribute("sender_car", info.sender.clone().to_string())
             .add_attribute("amount", amount.to_string())
             .add_attribute("turns", state.turns.clone().to_string())
             .add_attribute("cost", cost.to_string())
@@ -345,29 +374,30 @@ pub mod execute {
         }
 
         let mut state = GAME_STATE.load(deps.storage)?;
-        let mut sender_car = state.map_addr_car.get(&info.sender).unwrap().to_owned();
-        let cost = get_super_shell_cost(&state, amount);
+        let mut sender_car = ALL_CAR_DATA.load(deps.storage, info.sender)?;
+        let sold = ACTION_SOLD.load(deps.storage, &ActionType::SuperShell.to_string())?;
+        let cost = get_super_shell_cost(&state, amount, sold.clone());
 
+        let sold_updated = sold + cost;
+
+        ACTION_SOLD.save(
+            deps.storage,
+            &ActionType::SuperShell.to_string(),
+            &sold_updated,
+        )?;
         sender_car.balance -= cost;
 
         let y = sender_car.y;
 
-        (*state.action_sold.get_mut(&ActionType::SuperShell).unwrap()) += amount;
-
         let all_cars = state.all_cars.clone();
         for i in 0..state.config.num_players {
-            let next_car = state
-                .map_addr_car
-                .get(&all_cars[i as usize])
-                .unwrap()
-                .to_owned();
+            let mut next_car = ALL_CAR_DATA.load(deps.storage, all_cars[i as usize].clone())?;
             if next_car.y <= y {
                 continue;
             }
 
             if next_car.speed > state.config.post_sell_speed {
-                state.map_addr_car.get_mut(&next_car.addr).unwrap().speed =
-                    state.config.post_sell_speed;
+                next_car.speed = state.config.post_sell_speed;
                 return Ok(Response::new()
                     .add_attribute("cost", cost.to_string())
                     .add_attribute("turns", state.turns.clone().to_string())
@@ -397,12 +427,18 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
 
 #[cfg(test)]
 mod tests {
+    use std::vec;
+
     use cosmwasm_std::{
         testing::{mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage},
-        Empty, OwnedDeps,
+        Addr, Empty, OwnedDeps,
     };
 
-    use crate::{contract::instantiate, msg::InstantiateMsg};
+    use crate::{
+        contract::execute,
+        contract::instantiate,
+        msg::{ExecuteMsg, InstantiateMsg},
+    };
 
     #[test]
     fn test_instantiate_work() {
@@ -426,32 +462,142 @@ mod tests {
             owner: "owner".to_owned(),
         };
 
-        let info = mock_info("sender", &[]);
+        let info = mock_info("owner", &[]);
         instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
         deps
     }
 
-    #[test]
-    fn test_reset() {}
+    fn register_deps() -> OwnedDeps<MockStorage, MockApi, MockQuerier, Empty> {
+        let mut deps = instantiate_deps();
+        let msg = ExecuteMsg::Register {
+            car_addrs: vec![
+                Addr::unchecked("car1"),
+                Addr::unchecked("car2"),
+                Addr::unchecked("car3"),
+            ],
+        };
+
+        let res = execute(
+            deps.as_mut(),
+            mock_env(),
+            mock_info("owner", &[]),
+            msg.clone(),
+        );
+        assert!(res.is_ok());
+
+        deps
+    }
 
     #[test]
-    fn test_register() {}
+    fn test_reset() {
+        let mut deps = instantiate_deps();
+
+        let msg = ExecuteMsg::Reset {};
+
+        let owner = "owner";
+        let not_owner = "not_owner";
+        let owner_info = mock_info(owner, &vec![]);
+        let not_onwer_info = mock_info(not_owner, &vec![]);
+
+        let res = execute(deps.as_mut(), mock_env(), owner_info, msg.clone());
+        assert!(res.is_ok());
+
+        let res = execute(deps.as_mut(), mock_env(), not_onwer_info, msg.clone());
+        assert!(res.is_err());
+    }
 
     #[test]
-    fn test_buy_accel() {}
+    fn test_register() {
+        let mut deps = instantiate_deps();
+
+        let msg = ExecuteMsg::Register {
+            car_addrs: vec![
+                Addr::unchecked("car1"),
+                Addr::unchecked("car2"),
+                Addr::unchecked("car3"),
+            ],
+        };
+
+        let owner = "owner";
+        let not_owner = "not_owner";
+
+        let owner_info = mock_info(owner, &[]);
+        let not_owner_info = mock_info(not_owner, &[]);
+
+        let res = execute(deps.as_mut(), mock_env(), not_owner_info, msg.clone());
+        assert!(res.is_err());
+
+        let res = execute(deps.as_mut(), mock_env(), owner_info.clone(), msg.clone());
+        assert!(res.is_ok());
+    }
 
     #[test]
-    fn test_buy_shell() {}
+    fn test_buy_accel() {
+        let mut deps = register_deps();
+
+        let msg = ExecuteMsg::BuyAccelerate { amount: 1 };
+
+        let info = mock_info("car1", &[]);
+
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+
+        println!("res: {:?}", res);
+
+        assert!(res.is_ok());
+    }
 
     #[test]
-    fn test_buy_ss() {}
+    fn test_buy_shell() {
+        let mut deps = register_deps();
+
+        let msg = ExecuteMsg::BuyShell { amount: 1 };
+
+        let info = mock_info("car1", &[]);
+
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+
+        assert!(res.is_ok());
+    }
 
     #[test]
-    fn test_buy_shield() {}
+    fn test_buy_ss() {
+        let mut deps = register_deps();
+
+        let msg = ExecuteMsg::BuySuperShell { amount: 1 };
+
+        let info = mock_info("car1", &[]);
+
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+
+        assert!(res.is_ok());
+    }
 
     #[test]
-    fn test_buy_banana() {}
+    fn test_buy_shield() {
+        let mut deps = register_deps();
+
+        let msg = ExecuteMsg::BuyShield { amount: 1 };
+
+        let info = mock_info("car1", &[]);
+
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_buy_banana() {
+        let mut deps = register_deps();
+
+        let msg = ExecuteMsg::BuyBanana {};
+
+        let info = mock_info("car1", &[]);
+
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+
+        assert!(res.is_ok());
+    }
 
     #[test]
     fn test_play() {}
