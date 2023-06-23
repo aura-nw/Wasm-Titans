@@ -1,17 +1,11 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
-// use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::BASE_CAR_ADDR;
 
-/*
-// version info for migration info
-const CONTRACT_NAME: &str = "crates.io:car-1";
-const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
-*/
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
