@@ -1,10 +1,10 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Addr};
+use cosmwasm_std::{Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{ActionType, GameState, ACTION_SOLD, GAME_STATE, OWNER, ALL_CAR_DATA, CarData};
+use crate::state::{ActionType, CarData, GameState, ACTION_SOLD, ALL_CAR_DATA, GAME_STATE, OWNER};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -418,13 +418,15 @@ pub fn get_cars_sorted_by_y(deps: Deps, state: &GameState) -> Vec<Addr> {
 
     for i in 0..state.config.num_players {
         for j in (i + 1)..state.config.num_players {
-            let car_data_result_j = ALL_CAR_DATA.load(deps.storage, state.all_cars[j as usize].clone());
+            let car_data_result_j =
+                ALL_CAR_DATA.load(deps.storage, state.all_cars[j as usize].clone());
             if car_data_result_j.is_err() {
                 return vec![];
             }
             let car_data_j = car_data_result_j.unwrap();
 
-            let car_data_result_i = ALL_CAR_DATA.load(deps.storage, state.all_cars[i as usize].clone());
+            let car_data_result_i =
+                ALL_CAR_DATA.load(deps.storage, state.all_cars[i as usize].clone());
             if car_data_result_i.is_err() {
                 return vec![];
             }
@@ -441,7 +443,11 @@ pub fn get_cars_sorted_by_y(deps: Deps, state: &GameState) -> Vec<Addr> {
     cars
 }
 
-pub fn get_all_car_data_and_find_car(deps: Deps, state: &GameState, addr: Addr) -> (Vec<CarData>, Option<u64>) {
+pub fn get_all_car_data_and_find_car(
+    deps: Deps,
+    state: &GameState,
+    addr: Addr,
+) -> (Vec<CarData>, Option<u64>) {
     let mut results = Vec::new();
     let mut found_car_index = None;
 
