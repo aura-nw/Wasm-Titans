@@ -1,10 +1,10 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Addr};
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{ActionType, GameState, ACTION_SOLD, GAME_STATE, OWNER};
+use crate::state::{ActionType, GameState, ACTION_SOLD, GAME_STATE, OWNER, ALL_CAR_DATA, CarData};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -39,7 +39,7 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::Register { car_addrs } => execute::execute_register(deps, env, info, car_addrs),
-        ExecuteMsg::Play { turns_to_play } => todo!(),
+        ExecuteMsg::Play { turns_to_play } => execute::execute_play(deps, env, info, turns_to_play),
         ExecuteMsg::BuyShell { amount } => execute::execute_buy_shell(deps, env, info, amount),
         ExecuteMsg::BuyAccelerate { amount } => {
             execute::execute_buy_accelerate(deps, env, info, amount)
@@ -64,6 +64,8 @@ pub mod execute {
         state::{ActionType, CarData, GameState, ACTION_SOLD, ALL_CAR_DATA, GAME_STATE, OWNER},
         ContractError,
     };
+
+    use super::get_all_car_data_and_find_car;
 
     pub fn execute_reset(
         deps: DepsMut,
@@ -123,71 +125,71 @@ pub mod execute {
             .add_attribute("action", "register"))
     }
 
-    // pub fn execute_play(
-    //     deps: DepsMut,
-    //     env: Env,
-    //     info: MessageInfo,
-    //     turns_to_play: u64,
-    // ) -> Result<Response, ContractError> {
-    //     let owner = OWNER.load(deps.storage)?;
+    pub fn execute_play(
+        deps: DepsMut,
+        env: Env,
+        info: MessageInfo,
+        turns_to_play: u64,
+    ) -> Result<Response, ContractError> {
+        let owner = OWNER.load(deps.storage)?;
 
-    //     if info.sender.to_string() != owner {
-    //         return Err(ContractError::Unauthorized {});
-    //     }
+        if info.sender.to_string() != owner {
+            return Err(ContractError::Unauthorized {});
+        }
 
-    //     let mut i = turns_to_play;
+        let mut i = turns_to_play;
 
-    //     loop {
-    //         if i == 0 {
-    //             break;
-    //         }
+        loop {
+            if i == 0 {
+                break;
+            }
 
-    //         let state = GAME_STATE.load(deps.storage)?;
+            let state = GAME_STATE.load(deps.storage)?;
 
-    //         if !state.can_play() {
-    //             return Err(ContractError::NotEnoughPlayers);
-    //         }
+            if !state.can_play() {
+                return Err(ContractError::NotEnoughPlayers);
+            }
 
-    //         let all_cars = state.all_cars.clone();
-    //         let current_turn = state.turns;
+            let all_cars = state.all_cars.clone();
+            let current_turn = state.turns;
 
-    //         let current_turn_car =
-    //             all_cars[(current_turn % state.config.num_players) as usize].clone();
+            let current_turn_car =
+                all_cars[(current_turn % state.config.num_players) as usize].clone();
 
-    //         let (all_car_data, your_car_index) =
-    //             get_all_car_data_and_find_car(&state, current_turn_car);
+            let (all_car_data, your_car_index) =
+                get_all_car_data_and_find_car(deps.as_ref(), &state, current_turn_car);
 
-    //         // TODO: Pack msg and send to car contract for running their turn
-    //         // add_message || add_submessage
+            // TODO: Pack msg and send to car contract for running their turn
+            // add_message || add_submessage
 
-    //         let bananas = get_bananas_sorted_by_y(&state);
+            let bananas = get_bananas_sorted_by_y(&state);
 
-    //         for i in 0..state.config.num_players {
-    //             let car_addr = all_cars[i as usize].clone();
-    //             let mut car_data = state.map_addr_car.get(&car_addr).unwrap().to_owned();
-    //             if car_data.shield > 0 {
-    //                 car_data.shield -= 1;
-    //             }
+            for i in 0..state.config.num_players {
+                let car_addr = all_cars[i as usize].clone();
+                let mut car_data = ALL_CAR_DATA.load(deps.storage, car_addr)?;
+                if car_data.shield > 0 {
+                    car_data.shield -= 1;
+                }
 
-    //             let len = bananas.len();
-    //             let car_position = car_data.y;
-    //             let mut car_target_position = car_position + car_data.speed;
+                let len = bananas.len();
+                let car_position = car_data.y;
+                let mut car_target_position = car_position + car_data.speed;
 
-    //             for banana_idx in 0..len {
-    //                 let banana_pos = bananas[banana_idx];
+                for banana_idx in 0..len {
+                    let banana_pos = bananas[banana_idx];
 
-    //                 if car_position >= banana_pos {
-    //                     // Stop at the banana
-    //                     car_target_position = banana_pos
-    //                 }
-    //             }
-    //         }
+                    if car_position >= banana_pos {
+                        // Stop at the banana
+                        car_target_position = banana_pos
+                    }
+                }
+            }
 
-    //         i -= 1;
-    //     }
+            i -= 1;
+        }
 
-    //     Ok(Response::new().add_attribute("action", "play"))
-    // }
+        Ok(Response::new().add_attribute("action", "play"))
+    }
 
     pub fn execute_buy_shell(
         deps: DepsMut,
@@ -409,6 +411,57 @@ pub mod execute {
             .add_attribute("turns", state.turns.clone().to_string())
             .add_attribute("action", "buy_super_shell"))
     }
+}
+
+pub fn get_cars_sorted_by_y(deps: Deps, state: &GameState) -> Vec<Addr> {
+    let mut cars = state.all_cars.clone();
+
+    for i in 0..state.config.num_players {
+        for j in (i + 1)..state.config.num_players {
+            let car_data_result_j = ALL_CAR_DATA.load(deps.storage, state.all_cars[j as usize].clone());
+            if car_data_result_j.is_err() {
+                return vec![];
+            }
+            let car_data_j = car_data_result_j.unwrap();
+
+            let car_data_result_i = ALL_CAR_DATA.load(deps.storage, state.all_cars[i as usize].clone());
+            if car_data_result_i.is_err() {
+                return vec![];
+            }
+            let car_data_i = car_data_result_i.unwrap();
+
+            if car_data_j.y > car_data_i.y {
+                let temp = cars[i as usize].clone();
+                cars[i as usize] = cars[j as usize].clone();
+                cars[j as usize] = temp
+            }
+        }
+    }
+
+    cars
+}
+
+pub fn get_all_car_data_and_find_car(deps: Deps, state: &GameState, addr: Addr) -> (Vec<CarData>, Option<u64>) {
+    let mut results = Vec::new();
+    let mut found_car_index = None;
+
+    let sorted_cars = get_cars_sorted_by_y(deps, state);
+
+    for i in 0..(state.config.num_players) {
+        let car_addr = sorted_cars[i as usize].clone();
+
+        if car_addr == addr {
+            found_car_index = Some(i as u64);
+        }
+        let car_data_result = ALL_CAR_DATA.load(deps.storage, car_addr);
+        if car_data_result.is_err() {
+            return (vec![], None);
+        }
+        let car_data = car_data_result.unwrap();
+        results.push(car_data);
+    }
+
+    (results, found_car_index)
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]

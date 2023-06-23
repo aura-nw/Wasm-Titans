@@ -1,11 +1,11 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{to_binary, Addr, CosmosMsg, StdResult, WasmMsg};
+use cosmwasm_std::{to_binary, Addr, CosmosMsg, DepsMut, StdResult, WasmMsg};
 
 use crate::{
     msg::ExecuteMsg,
-    state::{CarData, GameState},
+    state::{CarData, GameState, ALL_CAR_DATA},
 };
 
 /// CwTemplateContract is a wrapper around Addr that provides a lot of helpers
