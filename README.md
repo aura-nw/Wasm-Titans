@@ -39,12 +39,43 @@ It is more a **theory/resource management** than a pure solidity **coding-skills
 
 
 ## 3. Write your car contract
-**See in contract examples `contracts/car-*`**
+We have write 3 cars examples for demo the racing.
+
+**See contract examples in `contracts/car-*`**
+
+* Default config:
+    * number_players = 3
+    * post_sell_speed = 0
+    * init_balance = 17500
+    * target_distance = 1000
+    * banana_speed_modifier = 0
+    * shell_target_price = 0,
+    * shell_per_turn_decrease = 0,
+    * shell_sell_per_turn = 0,
+    * accel_target_price = 0,
+    * accel_per_turn_decrease = 0,
+    * accel_sell_per_turn = 0,
+    * ss_target_price = 0,
+    * ss_per_turn_decrease = 0,
+    * ss_sell_per_turn = 0,
+    * banana_target_price = 0,
+    * banana_per_turn_decrease = 0,
+    * banana_sell_per_turn = 0,
+    * shield_target_price = 0,
+    * shield_per_turn_decrease = 0,
+    * shield_sell_per_turn = 0,
+
 
 ## 4. Run test
 **Run script**
+    
 ```
+# Test your code
+cargo test
+
+# Run the racing with mock
 ./devtools/run-test.sh
 ```
 
+The results will show winer car and actions of each car when they
 ## 5. Deploy on chain

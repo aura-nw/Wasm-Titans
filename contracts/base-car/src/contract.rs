@@ -1,6 +1,6 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{to_binary, Addr, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
@@ -473,14 +473,36 @@ pub fn get_all_car_data_and_find_car(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetAllCarData {} => todo!(),
-        QueryMsg::GetAllBananas {} => todo!(),
-        QueryMsg::GetAccelerateCost {} => todo!(),
-        QueryMsg::GetShellCost {} => todo!(),
-        QueryMsg::GetSuperShellCost {} => todo!(),
-        QueryMsg::GetBananaCost {} => todo!(),
-        QueryMsg::GetShieldCost => todo!(),
-        QueryMsg::GetOwner {} => todo!(),
+        QueryMsg::GetAllCarData {} => to_binary(&query::get_all_car_data(deps)?),
+        QueryMsg::GetOwner {} => to_binary(&query::get_owner(deps)?),
+    }
+}
+
+pub mod query {
+    use std::vec;
+
+    use cosmwasm_std::{Addr, Deps, Order, StdResult};
+
+    use crate::{
+        msg::{AllCarDataReponse, OwnerResponse},
+        state::{CarData, ALL_CAR_DATA, OWNER},
+    };
+
+    pub fn get_all_car_data(deps: Deps) -> StdResult<AllCarDataReponse> {
+        let all: StdResult<Vec<(Addr, CarData)>> = ALL_CAR_DATA
+            .range(deps.storage, None, None, Order::Ascending)
+            .collect();
+        if all.is_err() {
+            return Ok(AllCarDataReponse { all_cars: vec![] });
+        }
+        Ok(AllCarDataReponse {
+            all_cars: all.unwrap(),
+        })
+    }
+
+    pub fn get_owner(deps: Deps) -> StdResult<OwnerResponse> {
+        let owner = OWNER.may_load(deps.storage)?;
+        Ok(OwnerResponse { owner })
     }
 }
 
@@ -489,6 +511,7 @@ mod tests {
     use std::vec;
 
     use cosmwasm_std::{
+        from_binary,
         testing::{mock_dependencies, mock_env, mock_info, MockApi, MockQuerier, MockStorage},
         Addr, Empty, OwnedDeps,
     };
@@ -496,8 +519,10 @@ mod tests {
     use crate::{
         contract::execute,
         contract::instantiate,
-        msg::{ExecuteMsg, InstantiateMsg},
+        msg::{AllCarDataReponse, ExecuteMsg, InstantiateMsg, OwnerResponse, QueryMsg},
     };
+
+    use super::query;
 
     #[test]
     fn test_instantiate_work() {
@@ -656,6 +681,40 @@ mod tests {
         let res = execute(deps.as_mut(), mock_env(), info, msg);
 
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_query_owner() {
+        let deps = register_deps();
+
+        let msg = QueryMsg::GetOwner {};
+
+        let res = query(deps.as_ref(), mock_env(), msg);
+
+        assert!(res.is_ok());
+
+        let OwnerResponse { owner } = from_binary(&res.unwrap()).unwrap();
+
+        println!("res: {:?}", owner.unwrap());
+    }
+
+    #[test]
+    fn test_query_all_car_data() {
+        let deps = instantiate_deps();
+        let msg = QueryMsg::GetAllCarData {};
+        let res = query(deps.as_ref(), mock_env(), msg);
+        assert!(res.is_ok());
+        let AllCarDataReponse { all_cars } = from_binary(&res.unwrap()).unwrap();
+        println!("all_cars: {:?}", all_cars);
+        assert!(all_cars.len() == 0);
+
+        let deps = register_deps();
+        let msg = QueryMsg::GetAllCarData {};
+        let res = query(deps.as_ref(), mock_env(), msg);
+        assert!(res.is_ok());
+        let AllCarDataReponse { all_cars } = from_binary(&res.unwrap()).unwrap();
+        println!("all_cars: {:?}", all_cars);
+        assert!(all_cars.len() == 3);
     }
 
     #[test]
