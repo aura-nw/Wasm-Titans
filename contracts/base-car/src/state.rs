@@ -116,6 +116,12 @@ pub struct CarData {
 }
 
 impl CarData {
+    fn test_car() -> Self {
+        Self { balance: 1000, addr: Addr::unchecked("input"), y: 10, speed: 2, shield: 0 }
+    }
+}
+
+impl CarData {
     pub fn at_start(addr: Addr) -> Self {
         Self {
             balance: 17500,
@@ -179,7 +185,7 @@ impl GameState {
     }
 
     pub fn register(&mut self, car_addrs: Vec<Addr>) {
-        self.all_cars = car_addrs.clone();
+        self.all_cars = car_addrs;
     }
 
     pub fn total_cars(&self) -> u64 {

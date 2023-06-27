@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::Addr;
 
-use crate::state::CarData;
+use crate::state::{CarData, Config, State};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -38,11 +38,21 @@ pub struct OwnerResponse {
 }
 
 #[cw_serde]
+pub struct GameStateResponse {
+    pub turns: u64,
+    pub config: Config,
+    pub state: State,
+}
+
+#[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
     #[returns(OwnerResponse)]
-    GetOwner {},
+    GetOwner,
 
     #[returns(AllCarDataReponse)]
-    GetAllCarData {},
+    GetAllCarData,
+
+    #[returns(GameStateResponse)]
+    GetGameState,
 }

@@ -9,9 +9,9 @@ use crate::state::{ActionType, CarData, GameState, ACTION_SOLD, ALL_CAR_DATA, GA
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
-    msg: InstantiateMsg,
+    _msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     let owner = info.sender.clone();
     OWNER.save(deps.storage, &owner.to_string())?;
@@ -54,14 +54,14 @@ pub fn execute(
 }
 
 pub mod execute {
-    use cosmwasm_std::{Addr, DepsMut, Env, MessageInfo, Response};
+    use cosmwasm_std::{Addr, Deps, DepsMut, Env, MessageInfo, Response};
 
     use crate::{
         helpers::{
             get_accel_cost, get_banana_cost, get_bananas_sorted_by_y, get_shell_cost,
             get_shield_cost, get_super_shell_cost,
         },
-        state::{ActionType, CarData, GameState, ACTION_SOLD, ALL_CAR_DATA, GAME_STATE, OWNER},
+        state::{ActionType, CarData, GameState, ACTION_SOLD, ALL_CAR_DATA, GAME_STATE, OWNER, State},
         ContractError,
     };
 
@@ -69,7 +69,7 @@ pub mod execute {
 
     pub fn execute_reset(
         deps: DepsMut,
-        env: Env,
+        _env: Env,
         info: MessageInfo,
     ) -> Result<Response, ContractError> {
         let owner = OWNER.load(deps.storage)?;
@@ -85,7 +85,7 @@ pub mod execute {
 
     pub fn execute_register(
         deps: DepsMut,
-        env: Env,
+        _env: Env,
         info: MessageInfo,
         car_addrs: Vec<Addr>,
     ) -> Result<Response, ContractError> {
@@ -102,15 +102,12 @@ pub mod execute {
         }
 
         game_state.register(car_addrs.clone());
+        game_state.state = State::Active;
 
         GAME_STATE.save(deps.storage, &game_state)?;
 
         for car_addr in car_addrs.clone() {
-            ALL_CAR_DATA.save(
-                deps.storage,
-                car_addr.clone(),
-                &CarData::at_start(car_addr.clone()),
-            )?;
+            ALL_CAR_DATA.save(deps.storage, car_addr.clone(), &CarData::at_start(car_addr))?;
         }
 
         Ok(Response::new()
@@ -413,7 +410,10 @@ pub mod execute {
     }
 }
 
-pub fn get_cars_sorted_by_y(deps: Deps, state: &GameState) -> Vec<Addr> {
+pub fn get_cars_sorted_by_y(
+    deps: Deps, 
+    state: &GameState
+) -> Vec<Addr> {
     let mut cars = state.all_cars.clone();
 
     for i in 0..state.config.num_players {
@@ -471,10 +471,11 @@ pub fn get_all_car_data_and_find_car(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetAllCarData {} => to_binary(&query::get_all_car_data(deps)?),
-        QueryMsg::GetOwner {} => to_binary(&query::get_owner(deps)?),
+        QueryMsg::GetAllCarData => to_binary(&query::get_all_car_data(deps)?),
+        QueryMsg::GetOwner => to_binary(&query::get_owner(deps)?),
+        QueryMsg::GetGameState => to_binary(&query::get_game_state(deps)?),
     }
 }
 
@@ -484,8 +485,8 @@ pub mod query {
     use cosmwasm_std::{Addr, Deps, Order, StdResult};
 
     use crate::{
-        msg::{AllCarDataReponse, OwnerResponse},
-        state::{CarData, ALL_CAR_DATA, OWNER},
+        msg::{AllCarDataReponse, GameStateResponse, OwnerResponse},
+        state::{CarData, ALL_CAR_DATA, GAME_STATE, OWNER},
     };
 
     pub fn get_all_car_data(deps: Deps) -> StdResult<AllCarDataReponse> {
@@ -504,6 +505,15 @@ pub mod query {
         let owner = OWNER.may_load(deps.storage)?;
         Ok(OwnerResponse { owner })
     }
+
+    pub fn get_game_state(deps: Deps) -> StdResult<GameStateResponse> {
+        let game_sate = GAME_STATE.load(deps.storage)?;
+        Ok(GameStateResponse {
+            turns: game_sate.turns,
+            config: game_sate.config,
+            state: game_sate.state,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -519,10 +529,10 @@ mod tests {
     use crate::{
         contract::execute,
         contract::instantiate,
-        msg::{AllCarDataReponse, ExecuteMsg, InstantiateMsg, OwnerResponse, QueryMsg},
+        msg::{AllCarDataReponse, ExecuteMsg, InstantiateMsg, OwnerResponse, QueryMsg, GameStateResponse}, state::{State, GAME_STATE},
     };
 
-    use super::query;
+    use super::{query, get_cars_sorted_by_y};
 
     #[test]
     fn test_instantiate_work() {
@@ -685,9 +695,22 @@ mod tests {
 
     #[test]
     fn test_query_owner() {
+        let deps = instantiate_deps();
+
+        let msg = QueryMsg::GetOwner;
+
+        let res = query(deps.as_ref(), mock_env(), msg);
+
+        assert!(res.is_ok());
+
+        let OwnerResponse { owner } = from_binary(&res.unwrap()).unwrap();
+
+        println!("res: {:?}", owner.unwrap());
+
+
         let deps = register_deps();
 
-        let msg = QueryMsg::GetOwner {};
+        let msg = QueryMsg::GetOwner;
 
         let res = query(deps.as_ref(), mock_env(), msg);
 
@@ -701,7 +724,7 @@ mod tests {
     #[test]
     fn test_query_all_car_data() {
         let deps = instantiate_deps();
-        let msg = QueryMsg::GetAllCarData {};
+        let msg = QueryMsg::GetAllCarData;
         let res = query(deps.as_ref(), mock_env(), msg);
         assert!(res.is_ok());
         let AllCarDataReponse { all_cars } = from_binary(&res.unwrap()).unwrap();
@@ -715,6 +738,46 @@ mod tests {
         let AllCarDataReponse { all_cars } = from_binary(&res.unwrap()).unwrap();
         println!("all_cars: {:?}", all_cars);
         assert!(all_cars.len() == 3);
+    }
+
+    #[test]
+    fn test_query_game_state() {
+        let deps = instantiate_deps();
+        let msg = QueryMsg::GetGameState;
+        let res = query(deps.as_ref(), mock_env(), msg);
+        assert!(res.is_ok());
+        let GameStateResponse { turns, config, state } = from_binary(&res.unwrap()).unwrap();
+        println!("turns: {:?}", turns);
+        assert!(turns == 0);
+        println!("config: {:?}", config);
+        println!("state: {:?}", state);
+        assert!(state == State::Waiting);
+
+        let deps = register_deps();
+        let msg = QueryMsg::GetGameState;
+        let res = query(deps.as_ref(), mock_env(), msg);
+        assert!(res.is_ok());
+        let GameStateResponse { turns, config, state } = from_binary(&res.unwrap()).unwrap();
+        println!("turns: {:?}", turns);
+        assert!(turns == 0);
+        println!("config: {:?}", config);
+        println!("state: {:?}", state);
+        assert!(state == State::Active);
+    }
+
+    #[test]
+    fn test_get_cars_sorted_by_y() {
+        let deps = register_deps();
+        let game_state = GAME_STATE.load(&deps.storage).unwrap();
+        
+        let cars = get_cars_sorted_by_y(deps.as_ref(), &game_state);
+        assert!(cars.len() == 3);
+        println!("cars: {:?}", cars);
+    }
+
+    #[test]
+    fn test_get_all_car_data_and_find_car() {
+        
     }
 
     #[test]
