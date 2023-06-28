@@ -117,7 +117,13 @@ pub struct CarData {
 
 impl CarData {
     fn test_car() -> Self {
-        Self { balance: 1000, addr: Addr::unchecked("input"), y: 10, speed: 2, shield: 0 }
+        Self {
+            balance: 1000,
+            addr: Addr::unchecked("input"),
+            y: 10,
+            speed: 2,
+            shield: 0,
+        }
     }
 }
 

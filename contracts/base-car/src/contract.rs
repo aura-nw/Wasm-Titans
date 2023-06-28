@@ -61,7 +61,9 @@ pub mod execute {
             get_accel_cost, get_banana_cost, get_bananas_sorted_by_y, get_shell_cost,
             get_shield_cost, get_super_shell_cost,
         },
-        state::{ActionType, CarData, GameState, ACTION_SOLD, ALL_CAR_DATA, GAME_STATE, OWNER, State},
+        state::{
+            ActionType, CarData, GameState, State, ACTION_SOLD, ALL_CAR_DATA, GAME_STATE, OWNER,
+        },
         ContractError,
     };
 
@@ -410,10 +412,7 @@ pub mod execute {
     }
 }
 
-pub fn get_cars_sorted_by_y(
-    deps: Deps, 
-    state: &GameState
-) -> Vec<Addr> {
+pub fn get_cars_sorted_by_y(deps: Deps, state: &GameState) -> Vec<Addr> {
     let mut cars = state.all_cars.clone();
 
     for i in 0..state.config.num_players {
@@ -529,10 +528,14 @@ mod tests {
     use crate::{
         contract::execute,
         contract::instantiate,
-        msg::{AllCarDataReponse, ExecuteMsg, InstantiateMsg, OwnerResponse, QueryMsg, GameStateResponse}, state::{State, GAME_STATE},
+        msg::{
+            AllCarDataReponse, ExecuteMsg, GameStateResponse, InstantiateMsg, OwnerResponse,
+            QueryMsg,
+        },
+        state::{State, GAME_STATE},
     };
 
-    use super::{query, get_cars_sorted_by_y};
+    use super::{get_all_car_data_and_find_car, get_cars_sorted_by_y, query};
 
     #[test]
     fn test_instantiate_work() {
@@ -707,7 +710,6 @@ mod tests {
 
         println!("res: {:?}", owner.unwrap());
 
-
         let deps = register_deps();
 
         let msg = QueryMsg::GetOwner;
@@ -746,7 +748,11 @@ mod tests {
         let msg = QueryMsg::GetGameState;
         let res = query(deps.as_ref(), mock_env(), msg);
         assert!(res.is_ok());
-        let GameStateResponse { turns, config, state } = from_binary(&res.unwrap()).unwrap();
+        let GameStateResponse {
+            turns,
+            config,
+            state,
+        } = from_binary(&res.unwrap()).unwrap();
         println!("turns: {:?}", turns);
         assert!(turns == 0);
         println!("config: {:?}", config);
@@ -757,7 +763,11 @@ mod tests {
         let msg = QueryMsg::GetGameState;
         let res = query(deps.as_ref(), mock_env(), msg);
         assert!(res.is_ok());
-        let GameStateResponse { turns, config, state } = from_binary(&res.unwrap()).unwrap();
+        let GameStateResponse {
+            turns,
+            config,
+            state,
+        } = from_binary(&res.unwrap()).unwrap();
         println!("turns: {:?}", turns);
         assert!(turns == 0);
         println!("config: {:?}", config);
@@ -769,7 +779,7 @@ mod tests {
     fn test_get_cars_sorted_by_y() {
         let deps = register_deps();
         let game_state = GAME_STATE.load(&deps.storage).unwrap();
-        
+
         let cars = get_cars_sorted_by_y(deps.as_ref(), &game_state);
         assert!(cars.len() == 3);
         println!("cars: {:?}", cars);
@@ -777,7 +787,14 @@ mod tests {
 
     #[test]
     fn test_get_all_car_data_and_find_car() {
-        
+        let deps = register_deps();
+        let game_state = GAME_STATE.load(&deps.storage).unwrap();
+
+        let (all_car_data, found_car) =
+            get_all_car_data_and_find_car(deps.as_ref(), &game_state, Addr::unchecked("car2"));
+
+        println!("all_car_data: {:?}", all_car_data);
+        println!("found_car: {:?}", found_car);
     }
 
     #[test]
