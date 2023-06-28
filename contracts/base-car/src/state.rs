@@ -6,7 +6,11 @@ use cw_storage_plus::{Item, Map};
 
 pub const OWNER: Item<String> = Item::new("owner");
 pub const GAME_STATE: Item<GameState> = Item::new("game_state");
+
+// ACTION_SOLD is map of number action has sold
+// example: <"shell", 10> meaning action shell has sold with 10 amount
 pub const ACTION_SOLD: Map<&str, u64> = Map::new("action_sold");
+
 pub const ALL_CAR_DATA: Map<Addr, CarData> = Map::new("all_car_data");
 
 #[cw_serde]
@@ -116,6 +120,7 @@ pub struct CarData {
 }
 
 impl CarData {
+    #[warn(dead_code)]
     fn test_car() -> Self {
         Self {
             balance: 1000,

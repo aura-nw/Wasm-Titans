@@ -54,7 +54,7 @@ pub fn execute(
 }
 
 pub mod execute {
-    use cosmwasm_std::{Addr, Deps, DepsMut, Env, MessageInfo, Response};
+    use cosmwasm_std::{Addr, DepsMut, Env, MessageInfo, Response};
 
     use crate::{
         helpers::{
@@ -192,7 +192,7 @@ pub mod execute {
 
     pub fn execute_buy_shell(
         deps: DepsMut,
-        env: Env,
+        _env: Env,
         info: MessageInfo,
         amount: u64,
     ) -> Result<Response, ContractError> {
@@ -206,42 +206,52 @@ pub mod execute {
         let sold = ACTION_SOLD.load(deps.storage, &ActionType::Shell.to_string())?;
         let cost = get_shell_cost(&state, amount, sold.clone());
 
-        let sold_updated = sold + cost;
+        let sold_updated = sold + amount;
 
         ACTION_SOLD.save(deps.storage, &ActionType::Shell.to_string(), &sold_updated)?;
 
-        let mut car_data = ALL_CAR_DATA.load(deps.storage, sender)?;
+        let mut car_data = ALL_CAR_DATA.load(deps.storage, sender.clone())?;
         car_data.balance -= cost;
 
         let y = car_data.y;
 
         let all_cars = state.all_cars.clone();
 
+        // Used to determine who to shell.
         let mut closest_car = CarData::empty();
         let mut dis_from_closest_car = u64::MAX;
 
         for i in 0..state.config.num_players {
             let next_car = ALL_CAR_DATA.load(deps.storage, all_cars[i as usize].clone())?;
-
+            
+            // If the car is behind or on us, skip it
             if next_car.y <= y {
                 continue;
             }
 
+            // Measure the distance from the car to us
             let dis_from_next_car = next_car.y - y;
-
+            
+            // If this car is closer than all other cars we've
+            // looked at so far, we'll make it than closest one.
             if dis_from_next_car < dis_from_closest_car {
                 closest_car = next_car;
                 dis_from_closest_car = dis_from_next_car
             }
         }
 
+        // Check for banana collisions
         let len_bananas = state.bananas.len();
         for i in 0..len_bananas {
+            // Skip bananas that are behind or on us
             if state.bananas[i] <= y {
                 continue;
             }
 
-            if dis_from_closest_car != u64::MAX && state.bananas[i] > y + dis_from_closest_car {
+            // Check if the closest car is closer than the closest banana
+            // If a banana is on top of the colest car, the banana is hit
+            if dis_from_closest_car != u64::MAX 
+                && state.bananas[i] > y + dis_from_closest_car {
                 break;
             }
 
@@ -266,7 +276,10 @@ pub mod execute {
             }
         }
 
-        Ok(Response::new().add_attribute("action", "buy_shell"))
+        Ok(Response::new()
+            .add_attribute("sender", sender.to_string())
+            .add_attribute("turns", state.turns.clone().to_string())
+            .add_attribute("action", "buy_shell"))
     }
 
     pub fn execute_buy_accelerate(
