@@ -241,8 +241,7 @@ pub mod execute {
         }
 
         // Check for banana collisions
-        let len_bananas = state.bananas.len();
-        for i in 0..len_bananas {
+        for i in 0..state.bananas.len() {
             // Skip bananas that are behind or on us
             if state.bananas[i] <= y {
                 continue;
@@ -255,27 +254,33 @@ pub mod execute {
                 break;
             }
 
-            state.bananas[i] = state.bananas[len_bananas - 1];
+            // Remove the banana by swapping it with the last and decreasing the size
+            state.bananas[i] = state.bananas[state.bananas.len() - 1].clone();
             state.bananas.pop();
 
+            // Sort the bananas
             let sorted_bananas = get_bananas_sorted_by_y(&state);
             state.bananas = sorted_bananas;
+
+            // Banana was closer or at the same position as the closestCar
             closest_car = CarData::empty();
             break;
         }
 
+        // If there is a closest car, shell it.
         if closest_car.addr.clone().into_string() != "" {
             if closest_car.shield == 0 && closest_car.speed > state.config.post_sell_speed {
                 closest_car.speed = state.config.post_sell_speed;
                 return Ok(Response::new()
                     .add_attribute("turns", state.turns.clone().to_string())
-                    .add_attribute("smoker", "")
-                    .add_attribute("smoked", "")
+                    .add_attribute("sender", sender.clone().to_string())
+                    .add_attribute("shelled", closest_car.clone().addr.to_string())
                     .add_attribute("amount", amount.to_string())
                     .add_attribute("action", "shelled"));
             }
         }
-
+        
+        // No car has shelled
         Ok(Response::new()
             .add_attribute("sender", sender.to_string())
             .add_attribute("turns", state.turns.clone().to_string())
@@ -284,27 +289,29 @@ pub mod execute {
 
     pub fn execute_buy_accelerate(
         deps: DepsMut,
-        env: Env,
+        _env: Env,
         info: MessageInfo,
         amount: u64,
     ) -> Result<Response, ContractError> {
-        let mut state = GAME_STATE.load(deps.storage)?;
-
+        let state = GAME_STATE.load(deps.storage)?;
         let sold = ACTION_SOLD.load(deps.storage, &ActionType::Accelerate.to_string())?;
+
+        // Get the cost of the acceleration
         let cost = get_accel_cost(&state, amount, sold.clone());
 
-        let sold_updated = sold + cost;
-
+        // Increase amount of acceleration sold
+        let sold_updated = sold + amount;
         ACTION_SOLD.save(deps.storage, &ActionType::Shell.to_string(), &sold_updated)?;
+        
         let sender = info.sender;
 
-        let mut sender_car = ALL_CAR_DATA.load(deps.storage, sender)?;
-
+        let mut sender_car = ALL_CAR_DATA.load(deps.storage, sender.clone())?;
         sender_car.balance -= cost;
         sender_car.speed += amount;
 
         Ok(Response::new()
-            .add_attribute("turns", state.turns.clone().to_string())
+            .add_attribute("turns", state.turns.to_string())
+            .add_attribute("sender_car", sender.to_string())
             .add_attribute("amount", amount.to_string())
             .add_attribute("cost", cost.to_string())
             .add_attribute("action", "buy_accelerate"))
@@ -312,26 +319,25 @@ pub mod execute {
 
     pub fn execute_buy_banana(
         deps: DepsMut,
-        env: Env,
+        _env: Env,
         info: MessageInfo,
     ) -> Result<Response, ContractError> {
         let mut state = GAME_STATE.load(deps.storage)?;
-
-        let sold = ACTION_SOLD.load(deps.storage, &ActionType::Banana.to_string())?;
-        let cost = get_banana_cost(&state, sold.clone());
-
-        let sold_updated = sold + cost;
-
-        ACTION_SOLD.save(deps.storage, &ActionType::Banana.to_string(), &sold_updated)?;
-
         let mut sender_car = ALL_CAR_DATA.load(deps.storage, info.sender.clone())?;
 
         if state.bananas.len() > 0 && state.bananas[state.bananas.len() - 1] == sender_car.y {
             return Ok(Response::new()
-                .add_attribute("cost", "0")
                 .add_attribute("turns", state.turns.clone().to_string())
+                .add_attribute("sender_car", info.sender.clone().to_string())
                 .add_attribute("action", "buy_banana"));
         }
+
+        let sold = ACTION_SOLD.load(deps.storage, &ActionType::Banana.to_string())?;
+        let cost = get_banana_cost(&state, sold.clone());
+
+        let sold_updated = sold + 1;
+
+        ACTION_SOLD.save(deps.storage, &ActionType::Banana.to_string(), &sold_updated)?;
 
         sender_car.balance -= cost;
 
@@ -349,7 +355,7 @@ pub mod execute {
 
     pub fn execute_buy_shield(
         deps: DepsMut,
-        env: Env,
+        _env: Env,
         info: MessageInfo,
         amount: u64,
     ) -> Result<Response, ContractError> {
@@ -357,12 +363,12 @@ pub mod execute {
             return Err(ContractError::ZeroAmount);
         }
 
-        let mut state = GAME_STATE.load(deps.storage)?;
+        let state = GAME_STATE.load(deps.storage)?;
         let mut sender_car = ALL_CAR_DATA.load(deps.storage, info.sender.clone())?;
         let sold = ACTION_SOLD.load(deps.storage, &ActionType::Shield.to_string())?;
         let cost = get_shield_cost(&state, amount, sold.clone());
 
-        let sold_updated = sold + cost;
+        let sold_updated = sold + amount;
 
         ACTION_SOLD.save(deps.storage, &ActionType::Shield.to_string(), &sold_updated)?;
         sender_car.balance -= cost;
@@ -379,7 +385,7 @@ pub mod execute {
 
     pub fn execute_buy_super_shell(
         deps: DepsMut,
-        env: Env,
+        _env: Env,
         info: MessageInfo,
         amount: u64,
     ) -> Result<Response, ContractError> {
@@ -387,12 +393,12 @@ pub mod execute {
             return Err(ContractError::ZeroAmount);
         }
 
-        let mut state = GAME_STATE.load(deps.storage)?;
-        let mut sender_car = ALL_CAR_DATA.load(deps.storage, info.sender)?;
+        let state = GAME_STATE.load(deps.storage)?;
+        let mut sender_car = ALL_CAR_DATA.load(deps.storage, info.sender.clone())?;
         let sold = ACTION_SOLD.load(deps.storage, &ActionType::SuperShell.to_string())?;
         let cost = get_super_shell_cost(&state, amount, sold.clone());
 
-        let sold_updated = sold + cost;
+        let sold_updated = sold + amount;
 
         ACTION_SOLD.save(
             deps.storage,
@@ -421,6 +427,7 @@ pub mod execute {
 
         Ok(Response::new()
             .add_attribute("turns", state.turns.clone().to_string())
+            .add_attribute("sender_car", info.sender.clone().to_string())
             .add_attribute("action", "buy_super_shell"))
     }
 }

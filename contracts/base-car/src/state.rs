@@ -58,9 +58,9 @@ impl Config {
     pub fn default() -> Self {
         Self {
             num_players: 3,
-            post_sell_speed: 0,
-            init_balance: 0,
-            target_distance: 0,
+            post_sell_speed: 1,
+            init_balance: 17500,
+            target_distance: 1000,
             banana_speed_modifier: 0,
             shell_target_price: 0,
             shell_per_turn_decrease: 0,
@@ -69,7 +69,7 @@ impl Config {
             accel_per_turn_decrease: 0,
             accel_sell_per_turn: 0,
             ss_target_price: 0,
-            ss_per_turn_decrease: 0,
+            ss_per_turn_decrease: 0, // zero
             ss_sell_per_turn: 0,
             banana_target_price: 0,
             banana_per_turn_decrease: 0,

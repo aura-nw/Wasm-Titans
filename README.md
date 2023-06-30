@@ -45,7 +45,7 @@ We have write 3 cars examples for demo the racing.
 
 * Default config:
     * number_players = 3
-    * post_sell_speed = 0
+    * post_sell_speed = 1
     * init_balance = 17500
     * target_distance = 1000
     * banana_speed_modifier = 0
