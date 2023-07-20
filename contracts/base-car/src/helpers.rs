@@ -123,4 +123,46 @@ pub fn compute_action_price(
 }
 
 #[cfg(test)]
-pub mod tests {}
+pub mod tests {
+    use crate::{
+        helpers::{get_shell_cost, get_super_shell_cost, get_shield_cost, get_banana_cost},
+        state::GameState,
+    };
+
+    use super::{get_accel_cost, get_bananas_sorted_by_y};
+
+    #[test]
+    fn test_get_bananas_sorted_by_y() {
+        let test_state = GameState::for_test();
+
+        let res = get_bananas_sorted_by_y(&test_state);
+        assert!(res.len() == test_state.bananas.len());
+        println!("{:?}", res);
+    }
+
+    #[test]
+    fn test_get_cost() {
+        let test_state = GameState::for_test();
+
+        let accel_cost = get_accel_cost(&test_state, 2, 3);
+        assert!(accel_cost != 0);
+        println!("{:?}", accel_cost);
+
+        let shell_cost = get_shell_cost(&test_state, 2, 3);
+        assert!(shell_cost != 0);
+        println!("{:?}", shell_cost);
+
+        let ss_cost = get_super_shell_cost(&test_state, 2, 3);
+        assert!(ss_cost != 0);
+        println!("{:?}", ss_cost);
+
+        let shield_cost = get_shield_cost(&test_state, 2, 3);
+        assert!(shield_cost != 0);
+        println!("{:?}", shield_cost);
+
+        let banana_cost = get_banana_cost(&test_state, 2);
+        assert!(banana_cost != 0);
+        println!("{:?}", banana_cost);
+    }
+}
+

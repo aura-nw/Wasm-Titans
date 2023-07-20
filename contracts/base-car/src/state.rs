@@ -191,7 +191,7 @@ impl GameState {
             turns: 3,
             state: State::Active,
             config: Config::default(),
-            bananas: Vec::new(),
+            bananas: vec![20, 10, 35, 30],
         }
     }
 

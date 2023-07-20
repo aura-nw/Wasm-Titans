@@ -56,3 +56,8 @@ pub enum QueryMsg {
     #[returns(GameStateResponse)]
     GetGameState,
 }
+
+#[cw_serde]
+pub enum CarExecuteMsg {
+    TakeTurn {},
+}

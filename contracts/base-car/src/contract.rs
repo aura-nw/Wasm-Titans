@@ -54,20 +54,21 @@ pub fn execute(
 }
 
 pub mod execute {
-    use cosmwasm_std::{Addr, DepsMut, Env, MessageInfo, Response};
+    use std::vec;
+
+    use cosmwasm_std::{to_binary, Addr, CosmosMsg, DepsMut, Env, MessageInfo, Response, WasmMsg};
 
     use crate::{
         helpers::{
             get_accel_cost, get_banana_cost, get_bananas_sorted_by_y, get_shell_cost,
             get_shield_cost, get_super_shell_cost,
         },
+        msg::CarExecuteMsg,
         state::{
             ActionType, CarData, GameState, State, ACTION_SOLD, ALL_CAR_DATA, GAME_STATE, OWNER,
         },
         ContractError,
     };
-
-    use super::get_all_car_data_and_find_car;
 
     pub fn execute_reset(
         deps: DepsMut,
@@ -126,7 +127,7 @@ pub mod execute {
 
     pub fn execute_play(
         deps: DepsMut,
-        env: Env,
+        _env: Env,
         info: MessageInfo,
         turns_to_play: u64,
     ) -> Result<Response, ContractError> {
@@ -136,13 +137,11 @@ pub mod execute {
             return Err(ContractError::Unauthorized {});
         }
 
-        let mut i = turns_to_play;
+        let mut turns = turns_to_play;
 
-        loop {
-            if i == 0 {
-                break;
-            }
+        let mut out_msgs = Vec::<CosmosMsg>::new();
 
+        while turns != 0 {
             let state = GAME_STATE.load(deps.storage)?;
 
             if !state.can_play() {
@@ -152,16 +151,22 @@ pub mod execute {
             let all_cars = state.all_cars.clone();
             let current_turn = state.turns;
 
-            let current_turn_car =
-                all_cars[(current_turn % state.config.num_players) as usize].clone();
+            let your_car_index = current_turn % state.config.num_players;
 
-            let (all_car_data, your_car_index) =
-                get_all_car_data_and_find_car(deps.as_ref(), &state, current_turn_car);
+            let current_turn_car = all_cars[your_car_index as usize].clone();
 
             // TODO: Pack msg and send to car contract for running their turn
             // add_message || add_submessage
+            out_msgs.push(
+                WasmMsg::Execute {
+                    contract_addr: current_turn_car.into(),
+                    msg: to_binary(&CarExecuteMsg::TakeTurn {})?,
+                    funds: vec![],
+                }
+                .into(),
+            );
 
-            let bananas = get_bananas_sorted_by_y(&state);
+            let mut bananas = get_bananas_sorted_by_y(&state);
 
             for i in 0..state.config.num_players {
                 let car_addr = all_cars[i as usize].clone();
@@ -178,16 +183,32 @@ pub mod execute {
                     let banana_pos = bananas[banana_idx];
 
                     if car_position >= banana_pos {
-                        // Stop at the banana
-                        car_target_position = banana_pos
+                        continue;
                     }
+
+                    if car_target_position >= banana_pos {
+                        car_target_position = banana_pos;
+                        car_data.speed = car_data.speed * state.config.banana_speed_modifier;
+                        bananas[banana_idx] = bananas[len - 1].clone();
+                        bananas.pop();
+                        bananas = get_bananas_sorted_by_y(&state);
+                    }
+                    break;
+                }
+                car_data.y = car_target_position;
+                if car_data.y >= state.config.target_distance {
+                    return Ok(Response::new()
+                        .add_attribute("action", "play")
+                        .add_attribute("winner", car_data.addr.into_string()));
                 }
             }
 
-            i -= 1;
+            turns -= 1;
         }
 
-        Ok(Response::new().add_attribute("action", "play"))
+        Ok(Response::new()
+            .add_attribute("action", "play")
+            .add_messages(out_msgs))
     }
 
     pub fn execute_buy_shell(
@@ -223,7 +244,7 @@ pub mod execute {
 
         for i in 0..state.config.num_players {
             let next_car = ALL_CAR_DATA.load(deps.storage, all_cars[i as usize].clone())?;
-            
+
             // If the car is behind or on us, skip it
             if next_car.y <= y {
                 continue;
@@ -231,7 +252,7 @@ pub mod execute {
 
             // Measure the distance from the car to us
             let dis_from_next_car = next_car.y - y;
-            
+
             // If this car is closer than all other cars we've
             // looked at so far, we'll make it than closest one.
             if dis_from_next_car < dis_from_closest_car {
@@ -249,8 +270,7 @@ pub mod execute {
 
             // Check if the closest car is closer than the closest banana
             // If a banana is on top of the colest car, the banana is hit
-            if dis_from_closest_car != u64::MAX 
-                && state.bananas[i] > y + dis_from_closest_car {
+            if dis_from_closest_car != u64::MAX && state.bananas[i] > y + dis_from_closest_car {
                 break;
             }
 
@@ -279,7 +299,7 @@ pub mod execute {
                     .add_attribute("action", "shelled"));
             }
         }
-        
+
         // No car has shelled
         Ok(Response::new()
             .add_attribute("sender", sender.to_string())
@@ -302,7 +322,7 @@ pub mod execute {
         // Increase amount of acceleration sold
         let sold_updated = sold + amount;
         ACTION_SOLD.save(deps.storage, &ActionType::Shell.to_string(), &sold_updated)?;
-        
+
         let sender = info.sender;
 
         let mut sender_car = ALL_CAR_DATA.load(deps.storage, sender.clone())?;
@@ -462,31 +482,23 @@ pub fn get_cars_sorted_by_y(deps: Deps, state: &GameState) -> Vec<Addr> {
     cars
 }
 
-pub fn get_all_car_data_and_find_car(
-    deps: Deps,
-    state: &GameState,
-    addr: Addr,
-) -> (Vec<CarData>, Option<u64>) {
+pub fn get_all_car_data(deps: Deps, state: &GameState) -> Vec<CarData> {
     let mut results = Vec::new();
-    let mut found_car_index = None;
 
     let sorted_cars = get_cars_sorted_by_y(deps, state);
 
     for i in 0..(state.config.num_players) {
         let car_addr = sorted_cars[i as usize].clone();
 
-        if car_addr == addr {
-            found_car_index = Some(i as u64);
-        }
         let car_data_result = ALL_CAR_DATA.load(deps.storage, car_addr);
         if car_data_result.is_err() {
-            return (vec![], None);
+            return vec![];
         }
         let car_data = car_data_result.unwrap();
         results.push(car_data);
     }
 
-    (results, found_car_index)
+    results
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -555,7 +567,7 @@ mod tests {
         state::{State, GAME_STATE},
     };
 
-    use super::{get_all_car_data_and_find_car, get_cars_sorted_by_y, query};
+    use super::{get_all_car_data, get_cars_sorted_by_y, query};
 
     #[test]
     fn test_instantiate_work() {
@@ -810,11 +822,9 @@ mod tests {
         let deps = register_deps();
         let game_state = GAME_STATE.load(&deps.storage).unwrap();
 
-        let (all_car_data, found_car) =
-            get_all_car_data_and_find_car(deps.as_ref(), &game_state, Addr::unchecked("car2"));
+        let all_car_data = get_all_car_data(deps.as_ref(), &game_state);
 
         println!("all_car_data: {:?}", all_car_data);
-        println!("found_car: {:?}", found_car);
     }
 
     #[test]
