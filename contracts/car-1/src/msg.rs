@@ -9,6 +9,7 @@ pub struct InstantiateMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     TakeTurn {},
+    Ping {},
 }
 
 #[cw_serde]

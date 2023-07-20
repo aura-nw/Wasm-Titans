@@ -29,6 +29,7 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::TakeTurn {} => execute::execute_take_turn(deps, env, info),
+        ExecuteMsg::Ping {} => execute::execute_ping(deps, env, info),
     }
 }
 
@@ -45,6 +46,17 @@ pub mod execute {
         Ok(Response::new()
             .add_attribute("contract_addr", env.contract.address.clone().to_string())
             .add_attribute("action", "execute_take_turn"))
+    }
+
+    pub fn execute_ping(
+        deps: DepsMut,
+        env: Env,
+        info: MessageInfo,
+    ) -> Result<Response, ContractError> {
+        Ok(Response::new()
+            .add_attribute("action", "ping")
+            .add_attribute("response", "pong")
+    )
     }
 }
 

@@ -60,4 +60,5 @@ pub enum QueryMsg {
 #[cw_serde]
 pub enum CarExecuteMsg {
     TakeTurn {},
+    Ping {},
 }
